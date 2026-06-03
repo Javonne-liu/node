@@ -22,6 +22,7 @@
 #ifndef SRC_UTIL_INL_H_
 #define SRC_UTIL_INL_H_
 
+#include "v8-isolate.h"
 #if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
 #include <cmath>
@@ -341,22 +342,6 @@ v8::Maybe<void> FromV8Array(v8::Local<v8::Context> context,
 }
 
 v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
-                                    std::string_view str,
-                                    v8::Isolate* isolate) {
-  if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
-  if (str.size() >= static_cast<size_t>(v8::String::kMaxLength)) [[unlikely]] {
-    // V8 only has a TODO comment about adding an exception when the maximum
-    // string size is exceeded.
-    ThrowErrStringTooLong(isolate);
-    return v8::MaybeLocal<v8::Value>();
-  }
-
-  return v8::String::NewFromUtf8(
-             isolate, str.data(), v8::NewStringType::kNormal, str.size())
-      .FromMaybe(v8::Local<v8::String>());
-}
-
-v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
                                     std::u16string_view str,
                                     v8::Isolate* isolate) {
   if (isolate == nullptr) isolate = v8::Isolate::GetCurrent();
@@ -590,7 +575,9 @@ void ArrayBufferViewContents<T, S>::Read(v8::Local<v8::ArrayBufferView> abv) {
   static_assert(sizeof(T) == 1, "Only supports one-byte data at the moment");
   length_ = abv->ByteLength();
   if (length_ > sizeof(stack_storage_) || abv->HasBuffer()) {
-    data_ = static_cast<T*>(abv->Buffer()->Data()) + abv->ByteOffset();
+    auto buf_data = abv->Buffer()->Data();
+    data_ = buf_data != nullptr ? static_cast<T*>(buf_data) + abv->ByteOffset()
+                                : stack_storage_;
   } else {
     abv->CopyContents(stack_storage_, sizeof(stack_storage_));
     data_ = stack_storage_;
@@ -678,10 +665,15 @@ T FromV8Value(v8::Local<v8::Value> value) {
         "Type is out of unsigned integer range");
     if constexpr (!loose) {
       CHECK(value->IsUint32());
+      return static_cast<T>(value.As<v8::Uint32>()->Value());
     } else {
       CHECK(value->IsNumber());
+      v8::Isolate* isolate = v8::Isolate::GetCurrent();
+      v8::Local<v8::Context> context = isolate->GetCurrentContext();
+      v8::Maybe<uint32_t> maybe = value->Uint32Value(context);
+      CHECK(!maybe.IsNothing());
+      return static_cast<T>(maybe.FromJust());
     }
-    return static_cast<T>(value.As<v8::Uint32>()->Value());
   } else if constexpr (std::is_integral_v<T> && std::is_signed_v<T>) {
     static_assert(
         std::numeric_limits<T>::max() <= std::numeric_limits<int32_t>::max() &&

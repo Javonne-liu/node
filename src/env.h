@@ -42,6 +42,7 @@
 #include "node_main_instance.h"
 #include "node_options.h"
 #include "node_perf_common.h"
+#include "node_profiling.h"
 #include "node_realm.h"
 #include "node_snapshotable.h"
 #include "permission/permission.h"
@@ -256,6 +257,8 @@ class NODE_EXTERN_PRIVATE IsolateData : public MemoryRetainer {
 
 struct ContextInfo {
   explicit ContextInfo(const std::string& name) : name(name) {}
+  ContextInfo(const std::string& name, const std::string& origin)
+      : name(name), origin(origin) {}
   const std::string name;
   std::string origin;
   bool is_default = false;
@@ -886,7 +889,7 @@ class Environment final : public MemoryRetainer {
   // Get the context with an explicit realm instead when possible.
   // Deprecate soon.
   inline v8::Local<v8::Context> context() const;
-  inline Realm* principal_realm() const;
+  inline PrincipalRealm* principal_realm() const;
 
 #if HAVE_INSPECTOR
   inline inspector::Agent* inspector_agent() const {
@@ -1053,7 +1056,7 @@ class Environment final : public MemoryRetainer {
 
   inline void RemoveHeapSnapshotNearHeapLimitCallback(size_t heap_limit);
 
-  v8::CpuProfilingResult StartCpuProfile();
+  v8::CpuProfilingResult StartCpuProfile(const CpuProfileOptions& options);
   v8::CpuProfile* StopCpuProfile(v8::ProfilerId profile_id);
 
   // Field identifiers for exit_info_

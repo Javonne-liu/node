@@ -1,7 +1,4 @@
-<!--
-  NB(chrisdickinson): if you move this file, be sure to update
-  tools/doc/html.mjs to point at the new location.
--->
+# Index
 
 <!--introduced_in=v0.10.0-->
 
@@ -31,12 +28,14 @@
 * [Errors](errors.md)
 * [Events](events.md)
 * [File system](fs.md)
+* [FFI](ffi.md)
 * [Globals](globals.md)
 * [HTTP](http.md)
 * [HTTP/2](http2.md)
 * [HTTPS](https.md)
 * [Inspector](inspector.md)
 * [Internationalization](intl.md)
+* [Iterable Streams API](stream_iter.md)
 * [Modules: CommonJS modules](modules.md)
 * [Modules: ECMAScript modules](esm.md)
 * [Modules: `node:module` API](module.md)
@@ -66,6 +65,7 @@
 * [URL](url.md)
 * [Utilities](util.md)
 * [V8](v8.md)
+* [Virtual File System](vfs.md)
 * [VM](vm.md)
 * [WASI](wasi.md)
 * [Web Crypto API](webcrypto.md)

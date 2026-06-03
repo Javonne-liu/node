@@ -13,6 +13,7 @@
       'ngtcp2/lib/ngtcp2_cc.c',
       'ngtcp2/lib/ngtcp2_cid.c',
       'ngtcp2/lib/ngtcp2_conn.c',
+      'ngtcp2/lib/ngtcp2_conn_info.c',
       'ngtcp2/lib/ngtcp2_conv.c',
       'ngtcp2/lib/ngtcp2_crypto.c',
       'ngtcp2/lib/ngtcp2_dcidtr.c',
@@ -78,6 +79,7 @@
       'nghttp3/lib/nghttp3_qpack_huffman.c',
       'nghttp3/lib/nghttp3_qpack_huffman_data.c',
       'nghttp3/lib/nghttp3_range.c',
+      'nghttp3/lib/nghttp3_ratelim.c',
       'nghttp3/lib/nghttp3_rcbuf.c',
       'nghttp3/lib/nghttp3_ringbuf.c',
       'nghttp3/lib/nghttp3_settings.c',
@@ -204,6 +206,7 @@
       'defines': [
         'BUILDING_NGHTTP3',
         'NGHTTP3_STATICLIB',
+        'DEBUGBUILD',
       ],
       'dependencies': [
         'ngtcp2'
@@ -245,7 +248,10 @@
     },
     {
       'target_name': 'ngtcp2_test_server',
-      'type': 'executable',
+      # Disabled: ngtcp2 examples now require C++23 (<print>, <expected>,
+      # std::println, std::expected) which is not yet supported on all
+      # Node.js platforms. Re-enable when C++23 is available.
+      'type': 'none',
       'cflags': [ '-Wno-everything' ],
       'include_dirs': [
         '',
@@ -303,7 +309,10 @@
     },
     {
       'target_name': 'ngtcp2_test_client',
-      'type': 'executable',
+      # Disabled: ngtcp2 examples now require C++23 (<print>, <expected>,
+      # std::println, std::expected) which is not yet supported on all
+      # Node.js platforms. Re-enable when C++23 is available.
+      'type': 'none',
       'cflags': [ '-Wno-everything' ],
       'include_dirs': [
         '',

@@ -128,12 +128,24 @@ Maybe<void> RsaKeyGenTraits::AdditionalConfig(
       static_cast<RSAKeyVariant>(args[*offset].As<Uint32>()->Value());
 
   CHECK_IMPLIES(params->params.variant != kKeyVariantRSA_PSS,
-                args.Length() == 10);
+                static_cast<unsigned int>(args.Length()) >= *offset + 3);
   CHECK_IMPLIES(params->params.variant == kKeyVariantRSA_PSS,
-                args.Length() == 13);
+                static_cast<unsigned int>(args.Length()) >= *offset + 6);
 
   params->params.modulus_bits = args[*offset + 1].As<Uint32>()->Value();
   params->params.exponent = args[*offset + 2].As<Uint32>()->Value();
+
+#ifdef OPENSSL_IS_BORINGSSL
+  // BoringSSL hangs indefinitely generating an RSA key with e=1, and for
+  // other invalid exponents (e=0, even values) reports the misleading error
+  // RSA_R_TOO_MANY_ITERATIONS only after running the full keygen loop. Reject
+  // those up-front with a clear error. The constraint here (odd integer >= 3)
+  // matches BoringSSL's own rsa_check_public_key validation.
+  if (params->params.exponent < 3 || (params->params.exponent & 1) == 0) {
+    THROW_ERR_OUT_OF_RANGE(env, "publicExponent is invalid");
+    return Nothing<void>();
+  }
+#endif
 
   *offset += 3;
 
@@ -176,12 +188,6 @@ Maybe<void> RsaKeyGenTraits::AdditionalConfig(
 }
 
 namespace {
-WebCryptoKeyExportStatus RSA_JWK_Export(const KeyObjectData& key_data,
-                                        const RSAKeyExportConfig& params,
-                                        ByteSource* out) {
-  return WebCryptoKeyExportStatus::FAILED;
-}
-
 using Cipher_t = DataPointer(const EVPKeyPointer& key,
                              const ncrypto::Rsa::CipherParams& params,
                              const ncrypto::Buffer<const void> in);
@@ -210,42 +216,6 @@ WebCryptoCipherStatus RSA_Cipher(Environment* env,
 }
 }  // namespace
 
-Maybe<void> RSAKeyExportTraits::AdditionalConfig(
-    const FunctionCallbackInfo<Value>& args,
-    unsigned int offset,
-    RSAKeyExportConfig* params) {
-  CHECK(args[offset]->IsUint32());  // RSAKeyVariant
-  params->variant =
-      static_cast<RSAKeyVariant>(args[offset].As<Uint32>()->Value());
-  return JustVoid();
-}
-
-WebCryptoKeyExportStatus RSAKeyExportTraits::DoExport(
-    const KeyObjectData& key_data,
-    WebCryptoKeyFormat format,
-    const RSAKeyExportConfig& params,
-    ByteSource* out) {
-  CHECK_NE(key_data.GetKeyType(), kKeyTypeSecret);
-
-  switch (format) {
-    case kWebCryptoKeyFormatRaw:
-      // Not supported for RSA keys of either type
-      return WebCryptoKeyExportStatus::FAILED;
-    case kWebCryptoKeyFormatJWK:
-      return RSA_JWK_Export(key_data, params, out);
-    case kWebCryptoKeyFormatPKCS8:
-      if (key_data.GetKeyType() != kKeyTypePrivate)
-        return WebCryptoKeyExportStatus::INVALID_KEY_TYPE;
-      return PKEY_PKCS8_Export(key_data, out);
-    case kWebCryptoKeyFormatSPKI:
-      if (key_data.GetKeyType() != kKeyTypePublic)
-        return WebCryptoKeyExportStatus::INVALID_KEY_TYPE;
-      return PKEY_SPKI_Export(key_data, out);
-    default:
-      UNREACHABLE();
-  }
-}
-
 RSACipherConfig::RSACipherConfig(RSACipherConfig&& other) noexcept
     : mode(other.mode),
       label(std::move(other.label)),
@@ -253,7 +223,7 @@ RSACipherConfig::RSACipherConfig(RSACipherConfig&& other) noexcept
       digest(other.digest) {}
 
 void RSACipherConfig::MemoryInfo(MemoryTracker* tracker) const {
-  if (mode == kCryptoJobAsync)
+  if (IsCryptoJobAsync(mode))
     tracker->TrackFieldWithSize("label", label.size());
 }
 
@@ -325,8 +295,10 @@ bool ExportJWKRsaKey(Environment* env,
 
   const ncrypto::Rsa rsa = m_pkey;
   if (!rsa ||
-      target->Set(env->context(), env->jwk_kty_string(), env->jwk_rsa_string())
-          .IsNothing()) {
+      !target
+           ->DefineOwnProperty(
+               env->context(), env->jwk_kty_string(), env->jwk_rsa_string())
+           .FromMaybe(false)) {
     return false;
   }
 
@@ -360,10 +332,7 @@ bool ExportJWKRsaKey(Environment* env,
   return true;
 }
 
-KeyObjectData ImportJWKRsaKey(Environment* env,
-                              Local<Object> jwk,
-                              const FunctionCallbackInfo<Value>& args,
-                              unsigned int offset) {
+KeyObjectData ImportJWKRsaKey(Environment* env, Local<Object> jwk) {
   Local<Value> n_value;
   Local<Value> e_value;
   Local<Value> d_value;
@@ -385,6 +354,11 @@ KeyObjectData ImportJWKRsaKey(Environment* env,
   KeyType type = d_value->IsString() ? kKeyTypePrivate : kKeyTypePublic;
 
   RSAPointer rsa(RSA_new());
+  if (!rsa) {
+    THROW_ERR_CRYPTO_OPERATION_FAILED(env, "Unable to create RSA pointer");
+    return {};
+  }
+
   ncrypto::Rsa rsa_view(rsa.get());
 
   ByteSource n = ByteSource::FromEncodedString(env, n_value.As<String>());
@@ -432,10 +406,26 @@ KeyObjectData ImportJWKRsaKey(Environment* env,
       THROW_ERR_CRYPTO_INVALID_JWK(env, "Invalid JWK RSA key");
       return {};
     }
+
+    // Verify that n == p * q.
+    const auto& pub = rsa_view.getPublicKey();
+    const auto& priv = rsa_view.getPrivateKey();
+    auto pq = BignumPointer::New();
+    BN_CTX* ctx = BN_CTX_new();
+    bool n_valid = ctx && pq && BN_mul(pq.get(), priv.p, priv.q, ctx) == 1 &&
+                   BN_cmp(pq.get(), pub.n) == 0;
+    BN_CTX_free(ctx);
+    if (!n_valid) {
+      THROW_ERR_CRYPTO_INVALID_JWK(env, "Invalid JWK RSA key");
+      return {};
+    }
   }
 
   auto pkey = EVPKeyPointer::NewRSA(std::move(rsa));
-  if (!pkey) return {};
+  if (!pkey) {
+    THROW_ERR_CRYPTO_OPERATION_FAILED(env, "Unable to create key pointer");
+    return {};
+  }
 
   return KeyObjectData::CreateAsymmetric(type, std::move(pkey));
 }
@@ -531,7 +521,6 @@ bool GetRsaKeyDetail(Environment* env,
 namespace RSAAlg {
 void Initialize(Environment* env, Local<Object> target) {
   RSAKeyPairGenJob::Initialize(env, target);
-  RSAKeyExportJob::Initialize(env, target);
   RSACipherJob::Initialize(env, target);
 
   NODE_DEFINE_CONSTANT(target, kKeyVariantRSA_SSA_PKCS1_v1_5);
@@ -541,7 +530,6 @@ void Initialize(Environment* env, Local<Object> target) {
 
 void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
   RSAKeyPairGenJob::RegisterExternalReferences(registry);
-  RSAKeyExportJob::RegisterExternalReferences(registry);
   RSACipherJob::RegisterExternalReferences(registry);
 }
 }  // namespace RSAAlg

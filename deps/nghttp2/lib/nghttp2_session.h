@@ -27,7 +27,7 @@
 
 #ifdef HAVE_CONFIG_H
 #  include <config.h>
-#endif /* HAVE_CONFIG_H */
+#endif /* defined(HAVE_CONFIG_H) */
 
 #include <nghttp2/nghttp2.h>
 #include "nghttp2_map.h"
@@ -107,8 +107,8 @@ typedef struct {
 #define NGHTTP2_DEFAULT_STREAM_RESET_RATE 33
 
 /* The default values for glitch rate limiter. */
-#define NGHTTP2_DEFAULT_GLITCH_BURST 1000
-#define NGHTTP2_DEFAULT_GLITCH_RATE 33
+#define NGHTTP2_DEFAULT_GLITCH_BURST 10000
+#define NGHTTP2_DEFAULT_GLITCH_RATE 330
 
 /* The default max number of CONTINUATION frames following an incoming
    HEADER frame. */
@@ -892,4 +892,4 @@ int nghttp2_session_update_recv_stream_window_size(nghttp2_session *session,
                                                    size_t delta_size,
                                                    int send_window_update);
 
-#endif /* NGHTTP2_SESSION_H */
+#endif /* !defined(NGHTTP2_SESSION_H) */

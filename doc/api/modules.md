@@ -76,10 +76,11 @@ Node.js has two module systems: CommonJS modules and [ECMAScript modules][].
 
 By default, Node.js will treat the following as CommonJS modules:
 
-* Files with a `.cjs` extension;
+* Files with a `.cjs` extension.
 
-* Files with a `.js` extension when the nearest parent `package.json` file
-  contains a top-level field [`"type"`][] with a value of `"commonjs"`.
+* Files with a `.js` extension or without an extension, when the nearest parent
+  `package.json` file contains a top-level field [`"type"`][] with a value of
+  `"commonjs"`.
 
 * Files with a `.js` extension or without an extension, when the nearest parent
   `package.json` file doesn't contain a top-level field [`"type"`][] or there is
@@ -90,11 +91,9 @@ By default, Node.js will treat the following as CommonJS modules:
   tools and loaders to determine how the files in the package should be
   interpreted.
 
-* Files with an extension that is not `.mjs`, `.cjs`, `.json`, `.node`, or `.js`
-  (when the nearest parent `package.json` file contains a top-level field
-  [`"type"`][] with a value of `"module"`, those files will be recognized as
-  CommonJS modules only if they are being included via `require()`, not when
-  used as the command-line entry point of the program).
+* Files with an extension that is not `.mjs`, `.cjs`, `.json`, `.node`, or `.js`,
+  when the nearest parent `package.json` file contains a top-level field
+  [`"type"`][] with a value of `"module"`.
 
 See [Determining module system][] for more details.
 
@@ -176,7 +175,8 @@ added:
   - v20.17.0
 changes:
   - version:
-    - REPLACEME
+     - v25.4.0
+     - v24.15.0
     pr-url: https://github.com/nodejs/node/pull/60959
     description: This feature is no longer experimental.
   - version:
@@ -262,8 +262,6 @@ the default export in the `.default` property, similar to the results returned b
 To customize what should be returned by `require(esm)` directly, the ES Module can export the
 desired value using the string name `"module.exports"`.
 
-<!-- eslint-disable @stylistic/js/semi -->
-
 ```mjs
 // point.mjs
 export default class Point {
@@ -273,7 +271,7 @@ export default class Point {
 // `distance` is lost to CommonJS consumers of this module, unless it's
 // added to `Point` as a static property.
 export function distance(a, b) { return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2); }
-export { Point as 'module.exports' }
+export { Point as 'module.exports' };
 ```
 
 <!-- eslint-disable node-core/no-duplicate-requires -->
@@ -288,12 +286,10 @@ console.log(distance); // undefined
 ```
 
 Notice in the example above, when the `module.exports` export name is used, named exports
-will be lost to CommonJS consumers. To allow  CommonJS consumers to continue accessing
+will be lost to CommonJS consumers. To allow CommonJS consumers to continue accessing
 named exports, the module can make sure that the default export is an object with the
 named exports attached to it as properties. For example with the example above,
 `distance` can be attached to the default export, the `Point` class, as a static method.
-
-<!-- eslint-disable @stylistic/js/semi -->
 
 ```mjs
 export function distance(a, b) { return Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2); }
@@ -303,7 +299,7 @@ export default class Point {
   static distance = distance;
 }
 
-export { Point as 'module.exports' }
+export { Point as 'module.exports' };
 ```
 
 <!-- eslint-disable node-core/no-duplicate-requires -->
@@ -363,8 +359,7 @@ require(X) from module at path Y
 MAYBE_DETECT_AND_LOAD(X)
 1. If X parses as a CommonJS module, load X as a CommonJS module. STOP.
 2. Else, if the source code of X can be parsed as ECMAScript module using
-  <a href="esm.md#resolver-algorithm-specification">DETECT_MODULE_SYNTAX defined in
-  the ESM resolver</a>,
+  DETECT_MODULE_SYNTAX defined in the ESM resolver,
   a. Load X as an ECMAScript module. STOP.
 3. THROW the SyntaxError from attempting to parse X as CommonJS in 1. STOP.
 
@@ -428,7 +423,7 @@ LOAD_PACKAGE_IMPORTS(X, DIR)
   a. let CONDITIONS = ["node", "require", "module-sync"]
   b. Else, let CONDITIONS = ["node", "require"]
 5. let MATCH = PACKAGE_IMPORTS_RESOLVE(X, pathToFileURL(SCOPE),
-  CONDITIONS) <a href="esm.md#resolver-algorithm-specification">defined in the ESM resolver</a>.
+  CONDITIONS) defined in the ESM resolver.
 6. RESOLVE_ESM_MATCH(MATCH).
 
 LOAD_PACKAGE_EXPORTS(X, DIR)
@@ -442,7 +437,7 @@ LOAD_PACKAGE_EXPORTS(X, DIR)
   a. let CONDITIONS = ["node", "require", "module-sync"]
   b. Else, let CONDITIONS = ["node", "require"]
 6. let MATCH = PACKAGE_EXPORTS_RESOLVE(pathToFileURL(DIR/NAME), "." + SUBPATH,
-   `package.json` "exports", CONDITIONS) <a href="esm.md#resolver-algorithm-specification">defined in the ESM resolver</a>.
+   `package.json` "exports", CONDITIONS) defined in the ESM resolver.
 7. RESOLVE_ESM_MATCH(MATCH)
 
 LOAD_PACKAGE_SELF(X, DIR)
@@ -452,7 +447,7 @@ LOAD_PACKAGE_SELF(X, DIR)
 4. If the SCOPE/package.json "name" is not the first segment of X, return.
 5. let MATCH = PACKAGE_EXPORTS_RESOLVE(pathToFileURL(SCOPE),
    "." + X.slice("name".length), `package.json` "exports", ["node", "require"])
-   <a href="esm.md#resolver-algorithm-specification">defined in the ESM resolver</a>.
+   defined in the ESM resolver.
 6. RESOLVE_ESM_MATCH(MATCH)
 
 RESOLVE_ESM_MATCH(MATCH)
@@ -461,6 +456,8 @@ RESOLVE_ESM_MATCH(MATCH)
    format. STOP
 3. THROW "not found"
 ```
+
+The "ESM resolver" is defined [in the ESM documentation](esm.md#resolver-algorithm-specification).
 
 ## Caching
 
@@ -532,6 +529,7 @@ When being loaded by `require()`, some built-in modules must be requested with t
 modules from having a conflict with user land packages that already have
 taken the name. Currently the built-in modules that requires the `node:` prefix are:
 
+* [`node:ffi`][]
 * [`node:sea`][]
 * [`node:sqlite`][]
 * [`node:test`][]
@@ -1283,6 +1281,7 @@ This section was moved to
 [`module.id`]: #moduleid
 [`module` core module]: module.md
 [`module` object]: #the-module-object
+[`node:ffi`]: ffi.md
 [`node:sea`]: single-executable-applications.md#single-executable-application-api
 [`node:sqlite`]: sqlite.md
 [`node:test/reporters`]: test.md#test-reporters

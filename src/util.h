@@ -390,6 +390,14 @@ constexpr size_t strsize(const T (&)[N]) {
   return N - 1;
 }
 
+// A type that has a valid std::char_traits specialization, as required by
+// std::basic_string and std::basic_string_view.
+template <typename T>
+concept standard_char_type =
+    std::is_same_v<T, char> || std::is_same_v<T, wchar_t> ||
+    std::is_same_v<T, char8_t> || std::is_same_v<T, char16_t> ||
+    std::is_same_v<T, char32_t>;
+
 // Allocates an array of member type T. For up to kStackStorageSize items,
 // the stack is used, otherwise malloc().
 template <typename T, size_t kStackStorageSize = 1024>
@@ -503,8 +511,12 @@ class MaybeStackBuffer {
       free(buf_);
   }
 
-  inline std::basic_string<T> ToString() const { return {out(), length()}; }
-  inline std::basic_string_view<T> ToStringView() const {
+  template <standard_char_type U = T>
+  inline std::basic_string<U> ToString() const {
+    return {out(), length()};
+  }
+  template <standard_char_type U = T>
+  inline std::basic_string_view<U> ToStringView() const {
     return {out(), length()};
   }
   // This can only be used if the buffer contains path data in UTF8
@@ -689,9 +701,9 @@ inline v8::Maybe<void> FromV8Array(v8::Local<v8::Context> context,
                                    v8::Local<v8::Array> js_array,
                                    std::vector<v8::Global<v8::Value>>* out);
 
-inline v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
-                                           std::string_view str,
-                                           v8::Isolate* isolate = nullptr);
+v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
+                                    std::string_view str,
+                                    v8::Isolate* isolate = nullptr);
 inline v8::MaybeLocal<v8::Value> ToV8Value(v8::Local<v8::Context> context,
                                            std::u16string_view str,
                                            v8::Isolate* isolate = nullptr);
@@ -858,12 +870,6 @@ std::unique_ptr<T> static_unique_pointer_cast(std::unique_ptr<U>&& ptr) {
 }
 
 #define MAYBE_FIELD_PTR(ptr, field) ptr == nullptr ? nullptr : &(ptr->field)
-
-// Returns a non-zero code if it fails to open or read the file,
-// aborts if it fails to close the file.
-int ReadFileSync(std::string* result, const char* path);
-// Reads all contents of a FILE*, aborts if it fails.
-std::vector<char> ReadFileSync(FILE* fp);
 
 v8::Local<v8::FunctionTemplate> NewFunctionTemplate(
     v8::Isolate* isolate,
@@ -1072,7 +1078,6 @@ inline v8::Local<v8::String> Uint32ToString(v8::Local<v8::Context> context,
       ->ToString(context)
       .ToLocalChecked();
 }
-
 }  // namespace node
 
 #endif  // defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS

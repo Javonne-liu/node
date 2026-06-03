@@ -121,7 +121,9 @@ added:
  - v14.10.0
  - v12.19.0
 changes:
-  - version: v25.2.0
+  - version:
+      - v25.2.0
+      - v24.12.0
     pr-url: https://github.com/nodejs/node/pull/60370
     description: Added `perf_hooks.eventLoopUtilization` alias.
 -->
@@ -375,7 +377,9 @@ which the current `node` process began, measured in Unix time.
 <!-- YAML
 added: v8.5.0
 changes:
-  - version: v25.2.0
+  - version:
+      - v25.2.0
+      - v24.12.0
     pr-url: https://github.com/nodejs/node/pull/60370
     description: Added `perf_hooks.timerify` alias.
   - version: v16.0.0
@@ -1626,7 +1630,9 @@ Returns a {RecordableHistogram}.
 ## `perf_hooks.eventLoopUtilization([utilization1[, utilization2]])`
 
 <!-- YAML
-added: v25.2.0
+added:
+  - v25.2.0
+  - v24.12.0
 -->
 
 * `utilization1` {Object} The result of a previous call to
@@ -1676,7 +1682,6 @@ setImmediate(() => {
 ```
 
 ```cjs
-'use strict';
 const { eventLoopUtilization } = require('node:perf_hooks');
 const { spawnSync } = require('node:child_process');
 
@@ -1751,7 +1756,9 @@ console.log(h.percentile(99));
 ## `perf_hooks.timerify(fn[, options])`
 
 <!-- YAML
-added: v25.2.0
+added:
+  - v25.2.0
+  - v24.12.0
 -->
 
 * `fn` {Function}
@@ -2124,7 +2131,6 @@ setTimeout(() => {}, 1000);
 ```
 
 ```cjs
-'use strict';
 const async_hooks = require('node:async_hooks');
 const {
   performance,
@@ -2167,8 +2173,6 @@ setTimeout(() => {}, 1000);
 The following example measures the duration of `require()` operations to load
 dependencies:
 
-<!-- eslint-disable no-global-assign -->
-
 ```mjs
 import { performance, PerformanceObserver } from 'node:perf_hooks';
 
@@ -2191,8 +2195,9 @@ const timedImport = performance.timerify(async (module) => {
 await timedImport('some-module');
 ```
 
+<!-- eslint-disable no-global-assign -->
+
 ```cjs
-'use strict';
 const {
   performance,
   PerformanceObserver,
@@ -2249,7 +2254,6 @@ createServer((req, res) => {
 ```
 
 ```cjs
-'use strict';
 const { PerformanceObserver } = require('node:perf_hooks');
 const http = require('node:http');
 
@@ -2291,7 +2295,6 @@ createServer((socket) => {
 ```
 
 ```cjs
-'use strict';
 const { PerformanceObserver } = require('node:perf_hooks');
 const net = require('node:net');
 const obs = new PerformanceObserver((items) => {
@@ -2325,7 +2328,6 @@ promises.resolve('localhost');
 ```
 
 ```cjs
-'use strict';
 const { PerformanceObserver } = require('node:perf_hooks');
 const dns = require('node:dns');
 const obs = new PerformanceObserver((items) => {

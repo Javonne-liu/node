@@ -1,17 +1,17 @@
 # Global Installation
 
-Undici provides an `install()` function to add all WHATWG fetch classes to `globalThis`, making them available globally without requiring imports.
+Undici provides an `install()` function to add fetch-related and other web API classes to `globalThis`, making them available globally without requiring imports.
 
 ## `install()`
 
-Install all WHATWG fetch classes globally on `globalThis`.
+Install undici's global web APIs on `globalThis`.
 
 **Example:**
 
 ```js
 import { install } from 'undici'
 
-// Install all WHATWG fetch classes globally  
+// Install undici's global web APIs
 install()
 
 // Now you can use fetch classes globally without importing
@@ -42,6 +42,56 @@ The `install()` function adds the following classes to `globalThis`:
 | `ErrorEvent` | WebSocket error event |
 | `MessageEvent` | WebSocket message event |
 | `EventSource` | Server-sent events client |
+
+## Using `FormData` with `fetch`
+
+If you send a `FormData` body, use matching implementations for `fetch` and
+`FormData`.
+
+These two patterns are safe:
+
+```js
+// Built-in globals from Node.js
+const body = new FormData()
+await fetch('https://example.com', {
+  method: 'POST',
+  body
+})
+```
+
+```js
+// Globals installed from the undici package
+import { install } from 'undici'
+
+install()
+
+const body = new FormData()
+await fetch('https://example.com', {
+  method: 'POST',
+  body
+})
+```
+
+After `install()`, `fetch`, `Headers`, `Response`, `Request`, and `FormData`
+all come from the installed `undici` package, so they work as a matching set.
+`WebSocket`, `CloseEvent`, `ErrorEvent`, `MessageEvent`, and `EventSource`
+also come from the installed `undici` package.
+
+If you do not want to install globals, import both from `undici` instead:
+
+```js
+import { fetch, FormData } from 'undici'
+
+const body = new FormData()
+await fetch('https://example.com', {
+  method: 'POST',
+  body
+})
+```
+
+Avoid mixing a global `FormData` with `undici.fetch()`, or `undici.FormData`
+with the built-in global `fetch()`. Keeping them paired avoids surprising
+multipart behavior across Node.js and undici versions.
 
 ## Use Cases
 
@@ -87,5 +137,5 @@ test('fetch API test', async () => {
 
 - The `install()` function overwrites any existing global implementations
 - Classes installed are undici's implementations, not Node.js built-ins
-- This provides access to undici's latest features and performance improvements
+- This provides access to undici's latest fetch, WebSocket, and EventSource features and performance improvements
 - The global installation persists for the lifetime of the process

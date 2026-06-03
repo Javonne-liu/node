@@ -1101,6 +1101,16 @@ int Http2Session::OnFrameReceive(nghttp2_session* handle,
     case NGHTTP2_HEADERS:
       session->HandleHeadersFrame(frame);
       break;
+    case NGHTTP2_RST_STREAM:
+      // Stamp the stream so JS onStreamClose can tell a peer reset apart
+      // from a clean close — both surface as on_stream_close, and a peer
+      // RST_STREAM(NO_ERROR) is otherwise indistinguishable from a natural
+      // close at the on_stream_close layer.
+      if (BaseObjectPtr<Http2Stream> stream =
+              session->FindStream(frame->hd.stream_id)) {
+        stream->set_peer_reset();
+      }
+      break;
     case NGHTTP2_SETTINGS:
       session->HandleSettingsFrame(frame);
       break;
@@ -1154,8 +1164,14 @@ int Http2Session::OnInvalidFrame(nghttp2_session* handle,
   // The GOAWAY frame includes an error code that indicates the type of error"
   // The GOAWAY frame is already sent by nghttp2. We emit the error
   // to liberate the Http2Session to destroy.
+  //
+  // ERR_FLOW_CONTROL: A WINDOW_UPDATE on stream 0 pushed the connection-level
+  // flow control window past 2^31-1. nghttp2 sends GOAWAY internally but
+  // without propagating this error the Http2Session would never be destroyed,
+  // causing a memory leak.
   if (nghttp2_is_fatal(lib_error_code) ||
       lib_error_code == NGHTTP2_ERR_STREAM_CLOSED ||
+      lib_error_code == NGHTTP2_ERR_FLOW_CONTROL ||
       lib_error_code == NGHTTP2_ERR_PROTO) {
     Environment* env = session->env();
     Isolate* isolate = env->isolate();
@@ -1259,6 +1275,24 @@ int Http2Session::OnFrameSent(nghttp2_session* handle,
                               void* user_data) {
   Http2Session* session = static_cast<Http2Session*>(user_data);
   session->statistics_.frame_sent += 1;
+
+  // If nghttp2 has internally terminated the session (e.g. due to a protocol
+  // error like oversized frames, padding errors, or HPACK compression
+  // failures), it calls nghttp2_session_terminate_session() directly which
+  // queues a GOAWAY but does not invoke any application-level callback.
+  // Detect that case here: a GOAWAY was sent but we never initiated it
+  // (no Close(), no session.close(), no session.goaway()).
+  //
+  // We set a flag here, and then throw the error at the end of
+  // SendPendingData, to wait until the GOAWAY is written before the session
+  // is torn down.
+  if (frame->hd.type == NGHTTP2_GOAWAY && !session->is_closing() &&
+      !session->is_destroyed() && !session->IsGracefulCloseInitiated() &&
+      !session->goaway_initiated_) {
+    Debug(session, "nghttp2 session terminated internally");
+    session->internal_goaway_sent_ = true;
+  }
+
   return 0;
 }
 
@@ -1286,9 +1320,12 @@ int Http2Session::OnStreamClose(nghttp2_session* handle,
   // ever passed on to the javascript side. If that happens, the callback
   // will return false.
   if (env->can_call_into_js()) {
-    Local<Value> arg = Integer::NewFromUnsigned(isolate, code);
+    Local<Value> argv[2] = {
+        Integer::NewFromUnsigned(isolate, code),
+        Boolean::New(isolate, stream->peer_reset()),
+    };
     MaybeLocal<Value> answer = stream->MakeCallback(
-        env->http2session_on_stream_close_function(), 1, &arg);
+        env->http2session_on_stream_close_function(), arraysize(argv), argv);
     if (answer.IsEmpty() || answer.ToLocalChecked()->IsFalse()) {
       // Skip to destroy
       stream->Destroy();
@@ -1992,6 +2029,18 @@ uint8_t Http2Session::SendPendingData() {
   }
 
   MaybeStopReading();
+
+  // If nghttp2 has internally torn down the session (detected in OnFrameSent)
+  // during the nghttp2_session_mem_send loop above, at this point we error:
+  if (internal_goaway_sent_) {
+    internal_goaway_sent_ = false;
+    if (!is_closing() && !is_destroyed()) {
+      Isolate* isolate = env()->isolate();
+      HandleScope scope(isolate);
+      Local<Value> arg = Integer::New(isolate, NGHTTP2_ERR_PROTO);
+      MakeCallback(env()->http2session_on_error_function(), 1, &arg);
+    }
+  }
 
   return 0;
 }
@@ -2934,6 +2983,7 @@ void Http2Session::Goaway(uint32_t code,
   if (is_destroyed())
     return;
 
+  goaway_initiated_ = true;
   Http2Scope h2scope(this);
   // the last proc stream id is the most recently created Http2Stream.
   if (lastStreamID <= 0)
@@ -3476,7 +3526,7 @@ void Initialize(Local<Object> target,
   Local<FunctionTemplate> setting = FunctionTemplate::New(env->isolate());
   setting->Inherit(AsyncWrap::GetConstructorTemplate(env));
   Local<ObjectTemplate> settingt = setting->InstanceTemplate();
-  settingt->SetInternalFieldCount(AsyncWrap::kInternalFieldCount);
+  settingt->SetInternalFieldCount(Http2Settings::kInternalFieldCount);
   env->set_http2settings_constructor_template(settingt);
 
   Local<FunctionTemplate> stream = FunctionTemplate::New(env->isolate());
@@ -3492,7 +3542,7 @@ void Initialize(Local<Object> target,
   stream->Inherit(AsyncWrap::GetConstructorTemplate(env));
   StreamBase::AddMethods(env, stream);
   Local<ObjectTemplate> streamt = stream->InstanceTemplate();
-  streamt->SetInternalFieldCount(StreamBase::kInternalFieldCount);
+  streamt->SetInternalFieldCount(Http2Stream::kInternalFieldCount);
   env->set_http2stream_constructor_template(streamt);
   SetConstructorFunction(context, target, "Http2Stream", stream);
 

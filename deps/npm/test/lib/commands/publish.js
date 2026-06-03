@@ -5,7 +5,7 @@ const pacote = require('pacote')
 const Arborist = require('@npmcli/arborist')
 const path = require('node:path')
 const fs = require('node:fs')
-const { githubIdToken, gitlabIdToken, oidcPublishTest, mockOidc } = require('../../fixtures/mock-oidc')
+const { circleciIdToken, githubIdToken, gitlabIdToken, oidcPublishTest, mockOidc } = require('../../fixtures/mock-oidc')
 const { sigstoreIdToken } = require('@npmcli/mock-registry/lib/provenance')
 const mockGlobals = require('@npmcli/mock-globals')
 
@@ -55,7 +55,7 @@ t.test('respects publishConfig.registry, runs appropriate scripts', async t => {
   t.equal(fs.existsSync(path.join(prefix, 'scripts-prepublish')), false, 'did not run prepublish')
   t.equal(fs.existsSync(path.join(prefix, 'scripts-publish')), true, 'ran publish')
   t.equal(fs.existsSync(path.join(prefix, 'scripts-postpublish')), true, 'ran postpublish')
-  t.same(logs.warn, ['Unknown publishConfig config "other". This will stop working in the next major version of npm.'])
+  t.same(logs.warn, ['Unknown publishConfig config "other". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.'])
 })
 
 t.test('re-loads publishConfig.registry if added during script process', async t => {
@@ -742,6 +742,27 @@ t.test('restricted access', async t => {
   t.matchSnapshot(logs.notice)
 })
 
+t.test('private access', async t => {
+  const packageJson = {
+    name: '@npm/test-package',
+    version: '1.0.0',
+  }
+  const { npm, joinedOutput, logs, registry } = await loadNpmWithRegistry(t, {
+    config: {
+      ...auth,
+      access: 'private',
+    },
+    prefixDir: {
+      'package.json': JSON.stringify(packageJson, null, 2),
+    },
+    authorization: token,
+  })
+  registry.publish('@npm/test-package', { packageJson, access: 'restricted' })
+  await npm.exec('publish', [])
+  t.matchSnapshot(joinedOutput(), 'new package version')
+  t.matchSnapshot(logs.notice)
+})
+
 t.test('public access', async t => {
   const { npm, joinedOutput, logs, registry } = await loadNpmWithRegistry(t, {
     config: {
@@ -1213,6 +1234,35 @@ t.test('oidc token exchange - no provenance', t => {
     },
     mockOidcTokenExchangeOptions: {
       idToken: gitlabPrivateIdToken,
+      body: {
+        token: 'exchange-token',
+      },
+    },
+    publishOptions: {
+      token: 'exchange-token',
+    },
+  }))
+
+  t.test('circleci missing NPM_ID_TOKEN', oidcPublishTest({
+    oidcOptions: { circleci: true, NPM_ID_TOKEN: '' },
+    config: {
+      '//registry.npmjs.org/:_authToken': 'existing-fallback-token',
+    },
+    publishOptions: {
+      token: 'existing-fallback-token',
+    },
+    logsContain: [
+      'silly oidc Skipped because no id_token available',
+    ],
+  }))
+
+  t.test('default registry success circleci', oidcPublishTest({
+    oidcOptions: { circleci: true, NPM_ID_TOKEN: circleciIdToken() },
+    config: {
+      '//registry.npmjs.org/:_authToken': 'existing-fallback-token',
+    },
+    mockOidcTokenExchangeOptions: {
+      idToken: circleciIdToken(),
       body: {
         token: 'exchange-token',
       },

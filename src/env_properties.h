@@ -21,6 +21,8 @@
   V(arrow_message_private_symbol, "node:arrowMessage")                         \
   V(contextify_context_private_symbol, "node:contextify:context")              \
   V(decorated_private_symbol, "node:decorated")                                \
+  V(empty_context_frame_sentinel_symbol, "node:empty_context_frame_sentinel")  \
+  V(ffi_pointer_address_private_symbol, "node:ffi:pointer_address")            \
   V(transfer_mode_private_symbol, "node:transfer_mode")                        \
   V(host_defined_option_symbol, "node:host_defined_option_symbol")             \
   V(js_transferable_wrapper_private_symbol, "node:js_transferable_wrapper")    \
@@ -44,6 +46,10 @@
 #define PER_ISOLATE_SYMBOL_PROPERTIES(V)                                       \
   V(fs_use_promises_symbol, "fs_use_promises_symbol")                          \
   V(async_id_symbol, "async_id_symbol")                                        \
+  V(ffi_sb_shared_buffer_symbol, "ffi_sb_shared_buffer_symbol")                \
+  V(ffi_sb_invoke_slow_symbol, "ffi_sb_invoke_slow_symbol")                    \
+  V(ffi_sb_arguments_symbol, "ffi_sb_arguments_symbol")                        \
+  V(ffi_sb_return_symbol, "ffi_sb_return_symbol")                              \
   V(constructor_key_symbol, "constructor_key_symbol")                          \
   V(handle_onclose_symbol, "handle_onclose")                                   \
   V(no_message_symbol, "no_message_symbol")                                    \
@@ -58,6 +64,7 @@
   V(resource_symbol, "resource_symbol")                                        \
   V(trigger_async_id_symbol, "trigger_async_id_symbol")                        \
   V(builtin_source_text_module_hdo, "builtin_source_text_module_hdo")          \
+  V(embedder_module_hdo, "embedder_module_hdo")                                \
   V(source_text_module_default_hdo, "source_text_module_default_hdo")          \
   V(vm_context_no_contextify, "vm_context_no_contextify")                      \
   V(vm_dynamic_import_default_internal, "vm_dynamic_import_default_internal")  \
@@ -78,6 +85,7 @@
   V(allow_unknown_named_params_string, "allowUnknownNamedParameters")          \
   V(alpn_callback_string, "ALPNCallback")                                      \
   V(args_string, "args")                                                       \
+  V(arguments_string, "arguments")                                             \
   V(async_ids_stack_string, "async_ids_stack")                                 \
   V(attributes_string, "attributes")                                           \
   V(backup_string, "backup")                                                   \
@@ -236,6 +244,7 @@
   V(kind_string, "kind")                                                       \
   V(last_insert_rowid_string, "lastInsertRowid")                               \
   V(length_string, "length")                                                   \
+  V(limits_string, "limits")                                                   \
   V(library_string, "library")                                                 \
   V(loop_count, "loopCount")                                                   \
   V(max_buffer_string, "maxBuffer")                                            \
@@ -288,6 +297,7 @@
   V(permission_string, "permission")                                           \
   V(phase_string, "phase")                                                     \
   V(pid_string, "pid")                                                         \
+  V(pointer_string, "pointer")                                                 \
   V(ping_rtt_string, "pingRTT")                                                \
   V(pipe_source_string, "pipeSource")                                          \
   V(pipe_string, "pipe")                                                       \
@@ -319,6 +329,7 @@
   V(resource_string, "resource")                                               \
   V(result_string, "result")                                                   \
   V(return_arrays_string, "returnArrays")                                      \
+  V(return_string, "return")                                                   \
   V(salt_length_string, "saltLength")                                          \
   V(search_string, "search")                                                   \
   V(servername_string, "servername")                                           \
@@ -394,14 +405,21 @@
   V(contextify_global_template, v8::ObjectTemplate)                            \
   V(contextify_wrapper_template, v8::ObjectTemplate)                           \
   V(cpu_usage_template, v8::DictionaryTemplate)                                \
+  V(crypto_cryptokey_constructor_template, v8::FunctionTemplate)               \
   V(crypto_key_object_handle_constructor, v8::FunctionTemplate)                \
+  V(crypto_key_object_constructor_template, v8::FunctionTemplate)              \
   V(env_proxy_template, v8::ObjectTemplate)                                    \
   V(env_proxy_ctor_template, v8::FunctionTemplate)                             \
   V(ephemeral_key_template, v8::DictionaryTemplate)                            \
   V(dir_instance_template, v8::ObjectTemplate)                                 \
   V(dns_ns_record_template, v8::DictionaryTemplate)                            \
+  V(dtls_context_constructor_template, v8::FunctionTemplate)                   \
+  V(dtls_endpoint_constructor_template, v8::FunctionTemplate)                  \
+  V(dtls_session_constructor_template, v8::FunctionTemplate)                   \
   V(fd_constructor_template, v8::ObjectTemplate)                               \
   V(fdclose_constructor_template, v8::ObjectTemplate)                          \
+  V(ffi_dynamic_library_constructor_template, v8::FunctionTemplate)            \
+  V(ffi_function_constructor_template, v8::FunctionTemplate)                   \
   V(filehandlereadwrap_template, v8::ObjectTemplate)                           \
   V(free_list_statistics_template, v8::DictionaryTemplate)                     \
   V(fsreqpromise_constructor_template, v8::ObjectTemplate)                     \
@@ -434,6 +452,8 @@
   V(socketaddress_constructor_template, v8::FunctionTemplate)                  \
   V(space_stats_template, v8::DictionaryTemplate)                              \
   V(sqlite_column_template, v8::DictionaryTemplate)                            \
+  V(sqlite_limits_template, v8::ObjectTemplate)                                \
+  V(sqlite_run_result_template, v8::DictionaryTemplate)                        \
   V(sqlite_statement_sync_constructor_template, v8::FunctionTemplate)          \
   V(sqlite_statement_sync_iterator_constructor_template, v8::FunctionTemplate) \
   V(sqlite_session_constructor_template, v8::FunctionTemplate)                 \
@@ -464,6 +484,7 @@
   V(async_hooks_init_function, v8::Function)                                   \
   V(async_hooks_promise_resolve_function, v8::Function)                        \
   V(buffer_prototype_object, v8::Object)                                       \
+  V(crypto_internal_cryptokey_constructor, v8::Function)                       \
   V(crypto_key_object_private_constructor, v8::Function)                       \
   V(crypto_key_object_public_constructor, v8::Function)                        \
   V(crypto_key_object_secret_constructor, v8::Function)                        \

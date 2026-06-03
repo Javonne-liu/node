@@ -355,7 +355,7 @@ async function testImportJwk({ name, publicUsages, privateUsages }, extractable)
         { name },
         extractable,
         publicUsages),
-      { message: 'JWK "crv" Parameter and algorithm name mismatch' });
+      { message: crv ? 'JWK "crv" Parameter and algorithm name mismatch' : 'Invalid keyData' });
 
     await assert.rejects(
       subtle.importKey(
@@ -364,7 +364,7 @@ async function testImportJwk({ name, publicUsages, privateUsages }, extractable)
         { name },
         extractable,
         privateUsages),
-      { message: 'JWK "crv" Parameter and algorithm name mismatch' });
+      { message: crv ? 'JWK "crv" Parameter and algorithm name mismatch' : 'Invalid keyData' });
   }
 
   await assert.rejects(
@@ -389,9 +389,10 @@ async function testImportJwk({ name, publicUsages, privateUsages }, extractable)
 async function testImportRaw({ name, publicUsages }) {
   const jwk = keyData[name].jwk;
 
+  const rawKeyData = Buffer.from(jwk.x, 'base64url');
   const publicKey = await subtle.importKey(
     'raw',
-    Buffer.from(jwk.x, 'base64url'),
+    rawKeyData,
     { name },
     true, publicUsages);
 
@@ -400,6 +401,10 @@ async function testImportRaw({ name, publicUsages }) {
   assert.strictEqual(publicKey.algorithm.name, name);
   assert.strictEqual(publicKey.algorithm, publicKey.algorithm);
   assert.strictEqual(publicKey.usages, publicKey.usages);
+
+  // Test raw export round-trip
+  const exported = await subtle.exportKey('raw', publicKey);
+  assert.deepStrictEqual(Buffer.from(exported), rawKeyData);
 }
 
 (async function() {
@@ -423,7 +428,7 @@ async function testImportRaw({ name, publicUsages }) {
 
   for (const [name, publicUsages, privateUsages] of [
     ['Ed25519', ['verify'], ['sign']],
-    ['X448', [], ['deriveBits']],
+    ['X25519', [], ['deriveBits']],
   ]) {
     assert.rejects(subtle.importKey(
       'spki',

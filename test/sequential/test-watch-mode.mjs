@@ -54,14 +54,23 @@ function runInBackground({ args = [], options = {}, completed = 'Completed runni
           stdout = [];
           stderr = '';
         } else if (data.startsWith('Failed running')) {
-          if (shouldFail) {
-            future.resolve({ stderr, stdout });
+          const settle = () => {
+            if (shouldFail) {
+              future.resolve({ stderr, stdout });
+            } else {
+              future.reject({ stderr, stdout });
+            }
+            future = Promise.withResolvers();
+            stdout = [];
+            stderr = '';
+          };
+          // If stderr is empty, wait for it to receive data before settling.
+          // This handles the race condition where stdout arrives before stderr.
+          if (stderr === '') {
+            child.stderr.once('data', settle);
           } else {
-            future.reject({ stderr, stdout });
+            settle();
           }
-          future = Promise.withResolvers();
-          stdout = [];
-          stderr = '';
         }
       }
     });
@@ -261,6 +270,27 @@ describe('watch mode', { concurrency: !process.env.TEST_PARALLEL, timeout: 60_00
         `Restarting ${inspect(jsFile)}`,
         'ENV: value1',
         'ENV2: newValue',
+        `Completed running ${inspect(jsFile)}. Waiting for file changes before restarting...`,
+      ]);
+    } finally {
+      await done();
+    }
+  });
+
+  it('should not crash when --env-file-if-exists points to a missing file', async () => {
+    const envKey = `TEST_ENV_${Date.now()}`;
+    const jsFile = createTmpFile(`console.log('ENV: ' + process.env.${envKey});`);
+    const missingEnvFile = path.join(tmpdir.path, `missing-${Date.now()}.env`);
+    const { done, restart } = runInBackground({
+      args: ['--watch-path', tmpdir.path, `--env-file-if-exists=${missingEnvFile}`, jsFile],
+    });
+
+    try {
+      const { stderr, stdout } = await restart();
+
+      assert.doesNotMatch(stderr, /ENOENT: no such file or directory, watch/);
+      assert.deepStrictEqual(stdout, [
+        'ENV: undefined',
         `Completed running ${inspect(jsFile)}. Waiting for file changes before restarting...`,
       ]);
     } finally {
@@ -796,7 +826,7 @@ process.on('message', (message) => {
     const file = createTmpFile();
     const configFile = createTmpFile(JSON.stringify({ watch: { 'watch': true } }), '.json');
     const { stderr, stdout } = await runWriteSucceed({
-      file, watchedFile: file, args: ['--experimental-config-file', configFile, file], options: {
+      file, watchedFile: file, args: [`--experimental-config-file=${configFile}`, file], options: {
         timeout: 10000,
       },
     });
@@ -820,7 +850,7 @@ process.on('message', (message) => {
     const watchedFile = createTmpFile('', '.js', dir);
     const configFile = createTmpFile(JSON.stringify({ watch: { 'watch-path': [dir] } }), '.json', dir);
 
-    const args = ['--experimental-config-file', configFile, file];
+    const args = [`--experimental-config-file=${configFile}`, file];
     const { stderr, stdout } = await runWriteSucceed({ file, watchedFile, args });
 
     assert.strictEqual(stderr, '');
@@ -878,6 +908,35 @@ process.on('message', (message) => {
       assert.deepStrictEqual(stdout, [
         'ENV_A: 123',
         'ENV_B: 456',
+        `Completed running ${inspect(jsFile)}. Waiting for file changes before restarting...`,
+      ]);
+    } finally {
+      await done();
+    }
+  });
+
+  it('should respect the order for --env-file and --env-file-if-exists', async () => {
+    const envKey = `TEST_ENV_${Date.now()}`;
+    const jsFile = createTmpFile(`console.log('ENV: ' + process.env.${envKey});`);
+
+    const envFile = createTmpFile(`${envKey}=base`, '.env');
+    const envFileIfExists = createTmpFile(`${envKey}=override`, '.env');
+
+    const { done, restart } = runInBackground({
+      args: [
+        '--watch',
+        `--env-file=${envFile}`,
+        `--env-file-if-exists=${envFileIfExists}`,
+        jsFile,
+      ],
+    });
+
+    try {
+      const { stdout, stderr } = await restart();
+
+      assert.strictEqual(stderr, '');
+      assert.deepStrictEqual(stdout, [
+        'ENV: override',
         `Completed running ${inspect(jsFile)}. Waiting for file changes before restarting...`,
       ]);
     } finally {

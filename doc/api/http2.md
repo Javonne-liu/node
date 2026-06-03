@@ -1113,10 +1113,12 @@ creates and returns an `Http2Stream` instance that can be used to send an
 HTTP/2 request to the connected server.
 
 When a `ClientHttp2Session` is first created, the socket may not yet be
-connected. if `clienthttp2session.request()` is called during this time, the
+connected. If `clienthttp2session.request()` is called during this time, the
 actual request will be deferred until the socket is ready to go.
-If the `session` is closed before the actual request be executed, an
-`ERR_HTTP2_GOAWAY_SESSION` is thrown.
+
+If the session becomes unavailable before the request can be created, the
+returned stream will emit `ERR_HTTP2_GOAWAY_SESSION` or
+`ERR_HTTP2_INVALID_SESSION` asynchronously.
 
 This method is only available if `http2session.type` is equal to
 `http2.constants.NGHTTP2_SESSION_CLIENT`.
@@ -1236,22 +1238,23 @@ the value is `undefined`, the stream is not yet ready for use.
 
 ##### Destruction
 
-All [`Http2Stream`][] instances are destroyed either when:
+All [`Http2Stream`][] instances are destroyed when one of the following
+happens:
 
-* An `RST_STREAM` frame for the stream is received by the connected peer,
-  and (for client streams only) pending data has been read.
-* The `http2stream.close()` method is called, and (for client streams only)
-  pending data has been read.
-* The `http2stream.destroy()` or `http2session.destroy()` methods are called.
+* Both sides send `END_STREAM` (a clean exchange).
+* The peer sends an `RST_STREAM` frame.
+* `http2stream.close()`, `http2stream.destroy()`, or `http2session.destroy()`
+  is called locally.
 
-When an `Http2Stream` instance is destroyed, an attempt will be made to send an
-`RST_STREAM` frame to the connected peer.
+For clean exchanges and clean cancels, the destroy is deferred until any
+pending `'end'` and `'finish'` events have fired. When destroyed, an
+attempt is made to send an `RST_STREAM` frame to the connected peer if
+one hasn't already been sent.
 
-When the `Http2Stream` instance is destroyed, the `'close'` event will
-be emitted. Because `Http2Stream` is an instance of `stream.Duplex`, the
-`'end'` event will also be emitted if the stream data is currently flowing.
-The `'error'` event may also be emitted if `http2stream.destroy()` was called
-with an `Error` passed as the first argument.
+`'close'` is always emitted on destroy. `'end'` and `'finish'` fire if
+their respective halves completed before destroy. `'error'` fires when
+the destroy carries an error — either via `http2stream.destroy(err)`,
+or when the peer reset the stream before sending `END_STREAM`.
 
 After the `Http2Stream` has been destroyed, the `http2stream.destroyed`
 property will be `true` and the `http2stream.rstCode` property will specify the
@@ -1262,14 +1265,18 @@ destroyed.
 
 <!-- YAML
 added: v8.4.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/63249
+    description: Documentation-only deprecation.
 -->
 
-The `'aborted'` event is emitted whenever a `Http2Stream` instance is
-abnormally aborted in mid-communication.
-Its listener does not expect any arguments.
+> Stability: 0 - Deprecated. Use `'close'` and `'error'` plus
+> `stream.destroyed`.
 
-The `'aborted'` event will only be emitted if the `Http2Stream` writable side
-has not been ended.
+Emitted when an `Http2Stream` is closed before the writable side has
+been ended (via `.end()` or auto-ended via `respond({ endStream: true })`).
+Listeners receive no arguments.
 
 #### Event: `'close'`
 
@@ -1281,19 +1288,29 @@ The `'close'` event is emitted when the `Http2Stream` is destroyed. Once
 this event is emitted, the `Http2Stream` instance is no longer usable.
 
 The HTTP/2 error code used when closing the stream can be retrieved using
-the `http2stream.rstCode` property. If the code is any value other than
-`NGHTTP2_NO_ERROR` (`0`), an `'error'` event will have also been emitted.
+the `http2stream.rstCode` property.
 
 #### Event: `'error'`
 
 <!-- YAML
 added: v8.4.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/63249
+    description: >-
+      Also emitted on peer-initiated resets that arrive before
+      `END_STREAM` (`ERR_HTTP2_STREAM_ABORTED` for clean codes,
+      `ERR_HTTP2_STREAM_ERROR` otherwise). Locally-initiated resets
+      without an explicit error remain silent.
 -->
 
 * `error` {Error}
 
-The `'error'` event is emitted when an error occurs during the processing of
-an `Http2Stream`.
+Emitted when an error occurs processing the `Http2Stream`. This includes
+peer-initiated resets that arrive before the readable side has been
+fully delivered: a clean reset code (`NGHTTP2_NO_ERROR` or
+`NGHTTP2_CANCEL`) surfaces as [`ERR_HTTP2_STREAM_ABORTED`][], any other
+code as [`ERR_HTTP2_STREAM_ERROR`][].
 
 #### Event: `'frameError'`
 
@@ -1341,10 +1358,11 @@ added: v8.4.0
 
 * `headers` {HTTP/2 Headers Object} An object describing the headers
 * `flags` {number} The associated numeric flags
+* `rawHeaders` {HTTP/2 Raw Headers}
 
 The `'trailers'` event is emitted when a block of headers associated with
-trailing header fields is received. The listener callback is passed the
-[HTTP/2 Headers Object][] and flags associated with the headers.
+trailing header fields is received. The listener callback is passed the [HTTP/2 Headers Object][], flags associated
+with the headers, and the headers in raw format (see [HTTP/2 Raw Headers][]).
 
 This event might not be emitted if `http2stream.end()` is called
 before trailers are received and the incoming data is not being read or
@@ -1375,8 +1393,8 @@ added: v8.4.0
 
 * Type: {boolean}
 
-Set to `true` if the `Http2Stream` instance was aborted abnormally. When set,
-the `'aborted'` event will have been emitted.
+`true` if the `Http2Stream` was closed while the writable side was
+still open. When set, the `'aborted'` event was emitted.
 
 #### `http2stream.bufferSize`
 
@@ -1704,10 +1722,11 @@ added: v8.4.0
 
 * `headers` {HTTP/2 Headers Object}
 * `flags` {number}
+* `rawHeaders` {HTTP/2 Raw Headers}
 
 The `'push'` event is emitted when response headers for a Server Push stream
-are received. The listener callback is passed the [HTTP/2 Headers Object][] and
-flags associated with the headers.
+are received. The listener callback is passed the [HTTP/2 Headers Object][], flags associated
+with the headers, and the headers in raw format (see [HTTP/2 Raw Headers][]).
 
 ```js
 stream.on('push', (headers, flags) => {
@@ -1719,6 +1738,13 @@ stream.on('push', (headers, flags) => {
 
 <!-- YAML
 added: v8.4.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/63249
+    description: >-
+      If no `'response'` listener is attached when the response headers
+      arrive, the response body is now silently discarded - matching
+      the `lib/http` client behaviour.
 -->
 
 * `headers` {HTTP/2 Headers Object}
@@ -1739,6 +1765,16 @@ req.on('response', (headers, flags) => {
   console.log(headers[':status']);
 });
 ```
+
+If no `'response'` listener is attached at the moment the response
+arrives, the response body will be entirely discarded (the stream is
+silently resumed). However, if a `'response'` listener is added, the
+data from the response object **must** be consumed — either by calling
+`response.read()` whenever there is a `'readable'` event, by adding a
+`'data'` handler, or by calling the `.resume()` method. Until the data
+is consumed, the `'end'` event will not fire. Also, until the data is
+read, it will consume memory that can eventually lead to a "process
+out of memory" error.
 
 ```cjs
 const http2 = require('node:http2');
@@ -2797,6 +2833,17 @@ Throws `ERR_INVALID_ARG_TYPE` for invalid `settings` argument.
 added: v8.4.0
 changes:
   - version:
+     - v25.7.0
+     - v24.15.0
+    pr-url: https://github.com/nodejs/node/pull/59917
+    description: Added the `strictSingleValueFields` option.
+  - version:
+     - v25.7.0
+     - v24.15.0
+    pr-url: https://github.com/nodejs/node/pull/61713
+    description: Added `http1Options` option. The `Http1IncomingMessage`
+                 and `Http1ServerResponse` options are now deprecated.
+  - version:
       - v23.0.0
       - v22.10.0
     pr-url: https://github.com/nodejs/node/pull/54875
@@ -2914,9 +2961,27 @@ changes:
   * `Http1IncomingMessage` {http.IncomingMessage} Specifies the
     `IncomingMessage` class to used for HTTP/1 fallback. Useful for extending
     the original `http.IncomingMessage`. **Default:** `http.IncomingMessage`.
+    **Deprecated.** Use `http1Options.IncomingMessage` instead. See
+    [DEP0202][].
   * `Http1ServerResponse` {http.ServerResponse} Specifies the `ServerResponse`
     class to used for HTTP/1 fallback. Useful for extending the original
     `http.ServerResponse`. **Default:** `http.ServerResponse`.
+    **Deprecated.** Use `http1Options.ServerResponse` instead. See
+    [DEP0202][].
+  * `http1Options` {Object} An options object for configuring the HTTP/1
+    fallback when `allowHTTP1` is `true`. These options are passed to the
+    underlying HTTP/1 server. See [`http.createServer()`][] for available
+    options. Among others, the following are supported:
+    * `IncomingMessage` {http.IncomingMessage} Specifies the
+      `IncomingMessage` class to use for HTTP/1 fallback.
+      **Default:** `http.IncomingMessage`.
+    * `ServerResponse` {http.ServerResponse} Specifies the `ServerResponse`
+      class to use for HTTP/1 fallback.
+      **Default:** `http.ServerResponse`.
+    * `keepAliveTimeout` {number} The number of milliseconds of inactivity
+      a server needs to wait for additional incoming data, after it has
+      finished writing the last response, before a socket will be destroyed.
+      **Default:** `5000`.
   * `Http2ServerRequest` {http2.Http2ServerRequest} Specifies the
     `Http2ServerRequest` class to use.
     Useful for extending the original `Http2ServerRequest`.
@@ -2932,6 +2997,10 @@ changes:
   * `strictFieldWhitespaceValidation` {boolean} If `true`, it turns on strict leading
     and trailing whitespace validation for HTTP/2 header field names and values
     as per [RFC-9113](https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.1).
+    **Default:** `true`.
+  * `strictSingleValueFields` {boolean} If `true`, strict validation is used
+    for headers and trailers defined as having only a single value, such that
+    an error is thrown if multiple values are provided.
     **Default:** `true`.
   * `...options` {Object} Any [`net.createServer()`][] option can be provided.
 * `onRequestHandler` {Function} See [Compatibility API][]
@@ -2990,6 +3059,16 @@ server.listen(8000);
 <!-- YAML
 added: v8.4.0
 changes:
+  - version:
+     - v25.7.0
+     - v24.15.0
+    pr-url: https://github.com/nodejs/node/pull/59917
+    description: Added the `strictSingleValueFields` option.
+  - version:
+     - v25.7.0
+     - v24.15.0
+    pr-url: https://github.com/nodejs/node/pull/61713
+    description: Added `http1Options` option.
   - version:
       - v15.10.0
       - v14.16.0
@@ -3108,6 +3187,24 @@ changes:
     and trailing whitespace validation for HTTP/2 header field names and values
     as per [RFC-9113](https://www.rfc-editor.org/rfc/rfc9113.html#section-8.2.1).
     **Default:** `true`.
+  * `strictSingleValueFields` {boolean} If `true`, strict validation is used
+    for headers and trailers defined as having only a single value, such that
+    an error is thrown if multiple values are provided.
+    **Default:** `true`.
+  * `http1Options` {Object} An options object for configuring the HTTP/1
+    fallback when `allowHTTP1` is `true`. These options are passed to the
+    underlying HTTP/1 server. See [`http.createServer()`][] for available
+    options. Among others, the following are supported:
+    * `IncomingMessage` {http.IncomingMessage} Specifies the
+      `IncomingMessage` class to use for HTTP/1 fallback.
+      **Default:** `http.IncomingMessage`.
+    * `ServerResponse` {http.ServerResponse} Specifies the `ServerResponse`
+      class to use for HTTP/1 fallback.
+      **Default:** `http.ServerResponse`.
+    * `keepAliveTimeout` {number} The number of milliseconds of inactivity
+      a server needs to wait for additional incoming data, after it has
+      finished writing the last response, before a socket will be destroyed.
+      **Default:** `5000`.
 * `onRequestHandler` {Function} See [Compatibility API][]
 * Returns: {Http2SecureServer}
 
@@ -3913,7 +4010,7 @@ const server = createSecureServer(
 ).listen(8000);
 
 function onRequest(req, res) {
-  // Detects if it is a HTTPS request or HTTP/2
+  // Detects if it is an HTTPS request or HTTP/2
   const { socket: { alpnProtocol } } = req.httpVersion === '2.0' ?
     req.stream.session : req;
   res.writeHead(200, { 'content-type': 'application/json' });
@@ -3937,7 +4034,7 @@ const server = createSecureServer(
 ).listen(4443);
 
 function onRequest(req, res) {
-  // Detects if it is a HTTPS request or HTTP/2
+  // Detects if it is an HTTPS request or HTTP/2
   const { socket: { alpnProtocol } } = req.httpVersion === '2.0' ?
     req.stream.session : req;
   res.writeHead(200, { 'content-type': 'application/json' });
@@ -3970,11 +4067,8 @@ data.
 added: v8.4.0
 -->
 
-The `'aborted'` event is emitted whenever a `Http2ServerRequest` instance is
-abnormally aborted in mid-communication.
-
-The `'aborted'` event will only be emitted if the `Http2ServerRequest` writable
-side has not been ended.
+The `'aborted'` event is emitted whenever a `Http2ServerRequest` instance
+is closed while the underlying writable side is still open.
 
 #### Event: `'close'`
 
@@ -4058,6 +4152,9 @@ added: v8.4.0
 The request/response headers object.
 
 Key-value pairs of header names and values. Header names are lower-cased.
+
+The object has a null prototype and should not be accessed using the `in`
+operator.
 
 ```js
 // Prints something like:
@@ -4218,6 +4315,9 @@ added: v8.4.0
 
 The request/response trailers object. Only populated at the `'end'` event.
 
+The object has a null prototype and should not be accessed using the `in`
+operator.
+
 #### `request.url`
 
 <!-- YAML
@@ -4236,10 +4336,8 @@ Accept: text/plain
 
 Then `request.url` will be:
 
-<!-- eslint-disable @stylistic/js/semi -->
-
-```js
-'/status?name=ryan'
+```json
+"/status?name=ryan"
 ```
 
 To parse the url into its parts, `new URL()` can be used:
@@ -4781,6 +4879,30 @@ response.writeEarlyHints({
 });
 ```
 
+#### `response.writeInformation(statusCode[, headers])`
+
+<!-- YAML
+added: v26.2.0
+-->
+
+* `statusCode` {number} An HTTP 1xx informational status code, between `100`
+  and `199` inclusive, excluding `101` (Switching Protocols) which is not
+  allowed in HTTP/2.
+* `headers` {Object} An optional object of headers to send with the
+  informational response.
+
+Sends an arbitrary HTTP 1xx informational response, equivalent in HTTP/2 to a
+`HEADERS` frame whose `:status` pseudo-header is a 1xx code. May be called
+multiple times before the final response. After the final response headers
+have been sent, this method is a no-op and returns `false`.
+
+This is the generic equivalent of [`response.writeContinue()`][] and
+[`response.writeEarlyHints()`][].
+
+```js
+response.writeInformation(110, { 'X-Progress': '50%' });
+```
+
 #### `response.writeHead(statusCode[, statusMessage][, headers])`
 
 <!-- YAML
@@ -4937,6 +5059,7 @@ you need to implement any fall-back behavior yourself.
 [ALPN Protocol ID]: https://www.iana.org/assignments/tls-extensiontype-values/tls-extensiontype-values.xhtml#alpn-protocol-ids
 [ALPN negotiation]: #alpn-negotiation
 [Compatibility API]: #compatibility-api
+[DEP0202]: deprecations.md#dep0202-http1incomingmessage-and-http1serverresponse-options-of-http2-servers
 [HTTP/1]: http.md
 [HTTP/2]: https://tools.ietf.org/html/rfc7540
 [HTTP/2 Headers Object]: #headers-object
@@ -4956,6 +5079,8 @@ you need to implement any fall-back behavior yourself.
 [`'unknownProtocol'`]: #event-unknownprotocol
 [`ClientHttp2Stream`]: #class-clienthttp2stream
 [`Duplex`]: stream.md#class-streamduplex
+[`ERR_HTTP2_STREAM_ABORTED`]: errors.md#err_http2_stream_aborted
+[`ERR_HTTP2_STREAM_ERROR`]: errors.md#err_http2_stream_error
 [`Http2ServerRequest`]: #class-http2http2serverrequest
 [`Http2ServerResponse`]: #class-http2http2serverresponse
 [`Http2Session` and Sockets]: #http2session-and-sockets
@@ -4963,6 +5088,7 @@ you need to implement any fall-back behavior yourself.
 [`Http2Stream`]: #class-http2stream
 [`ServerHttp2Stream`]: #class-serverhttp2stream
 [`TypeError`]: errors.md#class-typeerror
+[`http.createServer()`]: http.md#httpcreateserveroptions-requestlistener
 [`http2.SecureServer`]: #class-http2secureserver
 [`http2.Server`]: #class-http2server
 [`http2.createSecureServer()`]: #http2createsecureserveroptions-onrequesthandler
@@ -4988,6 +5114,7 @@ you need to implement any fall-back behavior yourself.
 [`response.write()`]: #responsewritechunk-encoding-callback
 [`response.write(data, encoding)`]: http.md#responsewritechunk-encoding-callback
 [`response.writeContinue()`]: #responsewritecontinue
+[`response.writeEarlyHints()`]: #responsewriteearlyhintshints
 [`response.writeHead()`]: #responsewriteheadstatuscode-statusmessage-headers
 [`server.close()`]: #serverclosecallback
 [`server.maxHeadersCount`]: http.md#servermaxheaderscount

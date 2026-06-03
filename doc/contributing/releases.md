@@ -272,11 +272,12 @@ $ git reset --hard upstream/vN.x
 The list of patches to include should be listed in the "Next Security Release"
 issue in `nodejs-private`. Ask the security release steward if you're unsure.
 
-The `git node land` tool does not work with the `nodejs-private`
-organization. To land a PR in Node.js private, use `git cherry-pick` to apply
-each commit from the PR. You will also need to manually apply the PR
-metadata (`PR-URL`, `Reviewed-by`, etc.) by amending the commit messages. If
+To use the `git node land` tool to land Pull Requests in the `nodejs-private`
+organization, you need to specify the full URL to the Pull Request and make sure
+you provide a GitHub token with read permission to the private repository. If
 known, additionally include `CVE-ID: CVE-XXXX-XXXXX` in the commit metadata.
+Make sure to sign and push to resulting commit to the private repository and not
+the public one.
 
 **Note**: Do not run CI on the PRs in `nodejs-private` until CI is locked down.
 You can integrate the PRs into the proposal without running full CI.
@@ -314,18 +315,23 @@ git checkout -b v1.2.3-proposal upstream/v1.x-staging
 You can also run:
 
 ```bash
-git node release -S --prepare --security --filterLabel vX.x
+git node release -S --prepare --security=../vulnerabilities.json --filterLabel vX.x
 ```
 
 Example:
 
 ```bash
 git checkout v20.x
-git node release -S --prepare --security --filterLabel v20.x
+git node release -S --prepare --security=../vulnerabilities.json --filterLabel v20.x
 ```
 
 to automate the remaining steps until step 6 or you can perform it manually
-following the below steps.
+following the below steps. For semver-minors, you can pass the new version
+explicitly with `--newVersion` arg:
+
+```bash
+git node release -S --prepare --security=../vulnerabilities.json --filterLabel v20.x --newVersion 20.20.0
+```
 
 <details>
 <summary>Security release</summary>
@@ -478,8 +484,8 @@ are formatted correctly.
 
 If this release includes new APIs then it is necessary to document that they
 were first added in this version. The relevant commits should already include
-`REPLACEME` tags as per the example in the
-[docs README](../../tools/doc/README.md). Check for these tags with
+`REPLACEME` tags (see [Writing Documentation](./api-documentation.md#writing-documentation)).
+Check for these tags with
 
 ```bash
 grep REPLACEME doc/api/*.md
@@ -1085,15 +1091,27 @@ There is an automatic build that is kicked off when you promote new builds, so
 within a few minutes nodejs.org will be listing your new version as the latest
 release, and a blog post draft PR will be created.
 
-In the event that a draft PR _is not created_, the [`scripts:release-post`][] script
-can be used as an alternative:
+This is driven by the [`post-release.yml`][] workflow in the `nodejs/node`
+repository, which triggers the [`create-release-post.yml`][] workflow on
+`nodejs/nodejs.org`. The same workflow also triggers a redirect update in the
+[`nodejs/release-cloudflare-worker`](https://github.com/nodejs/release-cloudflare-worker)
+repository. Both steps must complete for the release to be fully available on
+the website.
 
-```bash
-# In the apps/site folder of nodejs/nodejs.org
-node --run scripts:release-post x.y.z
-```
+In the event that [`post-release.yml`][] fails, the **first step should be to
+re-run the failed action** rather than manually triggering workflows in other
+repositories. Skipping steps in the process can result in the blog post being
+published without the release documents being available, or without the
+Cloudflare redirects being updated.
 
-This script will use the promoted builds and changelog to generate the post.
+If the failed action continues to fail after re-running, you can manually
+trigger both of the following:
+
+1. The [`create-release-post.yml`][] workflow on the `nodejs/nodejs.org`
+   repository.
+2. The release worker update on the
+   [`nodejs/release-cloudflare-worker`](https://github.com/nodejs/release-cloudflare-worker)
+   repository.
 
 * You can add a short blurb just under the main heading if you want to say
   something important, otherwise the text should be publication ready.
@@ -1119,7 +1137,7 @@ This script will use the promoted builds and changelog to generate the post.
 
 The nodejs.org website will automatically rebuild and include the new version.
 To announce the build on social media, please ping the @nodejs-social-team
-on offical slack channel.
+on official slack channel.
 
 Node.js is also available on Bluesky and a release announcement can be
 reposted using [nodejs/bluesky](https://github.com/nodejs/bluesky) repository.
@@ -1480,8 +1498,9 @@ Typical resolution: sign the release again.
 [CI lockdown procedure]: https://github.com/nodejs/build/blob/HEAD/doc/jenkins-guide.md#restricting-access-for-security-releases
 [Node.js Snap management repository]: https://github.com/nodejs/snap
 [Snap]: https://snapcraft.io/node
+[`create-release-post.yml`]: https://github.com/nodejs/nodejs.org/actions/workflows/create-release-post.yml
 [`create-release-proposal`]: https://github.com/nodejs/node/actions/workflows/create-release-proposal.yml
-[`scripts:release-post`]: https://github.com/nodejs/nodejs.org/blob/HEAD/apps/site/scripts/release-post/index.mjs
+[`post-release.yml`]: https://github.com/nodejs/node/actions/workflows/post-release.yml
 [build-infra team]: https://github.com/orgs/nodejs/teams/build-infra
 [expected assets]: https://github.com/nodejs/build/tree/HEAD/ansible/www-standalone/tools/promote/expected_assets
 [nodejs.org repository]: https://github.com/nodejs/nodejs.org

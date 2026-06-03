@@ -38,7 +38,7 @@ ScryptConfig& ScryptConfig::operator=(ScryptConfig&& other) noexcept {
 }
 
 void ScryptConfig::MemoryInfo(MemoryTracker* tracker) const {
-  if (mode == kCryptoJobAsync) {
+  if (IsCryptoJobAsync(mode)) {
     tracker->TrackFieldWithSize("pass", pass.size());
     tracker->TrackFieldWithSize("salt", salt.size());
   }
@@ -72,13 +72,9 @@ Maybe<void> ScryptTraits::AdditionalConfig(
     return Nothing<void>();
   }
 
-  params->pass = mode == kCryptoJobAsync
-      ? pass.ToCopy()
-      : pass.ToByteSource();
+  params->pass = IsCryptoJobAsync(mode) ? pass.ToCopy() : pass.ToByteSource();
 
-  params->salt = mode == kCryptoJobAsync
-      ? salt.ToCopy()
-      : salt.ToByteSource();
+  params->salt = IsCryptoJobAsync(mode) ? salt.ToCopy() : salt.ToByteSource();
 
   CHECK(args[offset + 2]->IsUint32());  // N
   CHECK(args[offset + 3]->IsUint32());  // r
@@ -116,7 +112,8 @@ Maybe<void> ScryptTraits::AdditionalConfig(
 bool ScryptTraits::DeriveBits(Environment* env,
                               const ScryptConfig& params,
                               ByteSource* out,
-                              CryptoJobMode mode) {
+                              CryptoJobMode mode,
+                              CryptoErrorStore* errors) {
   // If the params.length is zero-length, just return an empty buffer.
   // It's useless, yes, but allowed via the API.
   if (params.length == 0) {
@@ -139,7 +136,10 @@ bool ScryptTraits::DeriveBits(Environment* env,
       params.maxmem,
       params.length);
 
-  if (!dp) return false;
+  if (!dp) {
+    errors->Insert(NodeCryptoError::SCRYPT_FAILED);
+    return false;
+  }
   DCHECK(!dp.isSecure());
   *out = ByteSource::Allocated(dp.release());
   return true;
