@@ -9,6 +9,7 @@
     {
       'target_name': 'perfetto_sdk',
       'type': 'static_library',
+      'toolsets': ['host', 'target'],
       'include_dirs': [ 'sdk' ],
       'direct_dependent_settings': {
         # Use like `#include "perfetto.h"`
@@ -16,6 +17,14 @@
       },
       'sources': [
         '<@(perfetto_sdk_sources)',
+      ],
+      'conditions': [
+        ['OS=="win"', {
+          'defines': [
+            'WIN32_LEAN_AND_MEAN',
+            'NOMINMAX',
+          ],
+        }],
       ],
     },
   ]

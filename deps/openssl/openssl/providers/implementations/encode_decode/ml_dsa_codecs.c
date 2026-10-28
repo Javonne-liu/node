@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 The OpenSSL Project Authors. All Rights Reserved.
+ * Copyright 2025-2026 The OpenSSL Project Authors. All Rights Reserved.
  *
  * Licensed under the Apache License 2.0 (the "License").  You may not use
  * this file except in compliance with the License.  You can obtain a copy
@@ -15,7 +15,7 @@
 #include <openssl/core_names.h>
 #include "internal/encoder.h"
 #include "prov/ml_dsa.h"
-#include "ml_dsa_codecs.h"
+#include "prov/ml_dsa_codecs.h"
 
 /*-
  * Tables describing supported ASN.1 input/output formats.
@@ -27,103 +27,17 @@
  * Private key bytes: 2560 (0x0a00)
  */
 static const ML_COMMON_SPKI_FMT ml_dsa_44_spkifmt = {
-    {
-        0x30,
-        0x82,
-        0x05,
-        0x32,
-        0x30,
-        0x0b,
-        0x06,
-        0x09,
-        0x60,
-        0x86,
-        0x48,
-        0x01,
-        0x65,
-        0x03,
-        0x04,
-        0x03,
-        0x11,
-        0x03,
-        0x82,
-        0x05,
-        0x21,
-        0x00,
-    }
+    { 0x30, 0x82, 0x05, 0x32, 0x30, 0x0b, 0x06, 0x09, 0x60, 0x86,
+        0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x11, 0x03, 0x82, 0x05,
+        0x21, 0x00 }
 };
 static const ML_COMMON_PKCS8_FMT ml_dsa_44_p8fmt[NUM_PKCS8_FORMATS] = {
-    {
-        "seed-priv",
-        0x0a2a,
-        0,
-        0x30820a26,
-        0x0420,
-        6,
-        0x20,
-        0x04820a00,
-        0x2a,
-        0x0a00,
-        0,
-        0,
-    },
-    {
-        "priv-only",
-        0x0a04,
-        0,
-        0x04820a00,
-        0,
-        0,
-        0,
-        0,
-        0x04,
-        0x0a00,
-        0,
-        0,
-    },
+    { "seed-priv", 0x0a2a, 0, 0x30820a26, 0x0420, 6, 0x20, 0x04820a00, 0x2a, 0x0a00, 0, 0 },
+    { "priv-only", 0x0a04, 0, 0x04820a00, 0, 0, 0, 0, 0x04, 0x0a00, 0, 0 },
     { "oqskeypair", 0x0f24, 0, 0x04820f20, 0, 0, 0, 0, 0x04, 0x0a00, 0x0a04, 0x0520 },
-    {
-        "seed-only",
-        0x0022,
-        2,
-        0x8020,
-        0,
-        2,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
-    {
-        "bare-priv",
-        0x0a00,
-        4,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x0a00,
-        0,
-        0,
-    },
-    {
-        "bare-seed",
-        0x0020,
-        4,
-        0,
-        0,
-        0,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
+    { "seed-only", 0x0022, 2, 0x8020, 0, 2, 0x20, 0, 0, 0, 0, 0 },
+    { "bare-priv", 0x0a00, 4, 0, 0, 0, 0, 0, 0, 0x0a00, 0, 0 },
+    { "bare-seed", 0x0020, 4, 0, 0, 0, 0x20, 0, 0, 0, 0, 0 },
 };
 
 /*
@@ -132,103 +46,17 @@ static const ML_COMMON_PKCS8_FMT ml_dsa_44_p8fmt[NUM_PKCS8_FORMATS] = {
  * Private key bytes: 4032 (0x0fc0)
  */
 static const ML_COMMON_SPKI_FMT ml_dsa_65_spkifmt = {
-    {
-        0x30,
-        0x82,
-        0x07,
-        0xb2,
-        0x30,
-        0x0b,
-        0x06,
-        0x09,
-        0x60,
-        0x86,
-        0x48,
-        0x01,
-        0x65,
-        0x03,
-        0x04,
-        0x03,
-        0x12,
-        0x03,
-        0x82,
-        0x07,
-        0xa1,
-        0x00,
-    }
+    { 0x30, 0x82, 0x07, 0xb2, 0x30, 0x0b, 0x06, 0x09, 0x60, 0x86,
+        0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x12, 0x03, 0x82, 0x07,
+        0xa1, 0x00 }
 };
 static const ML_COMMON_PKCS8_FMT ml_dsa_65_p8fmt[NUM_PKCS8_FORMATS] = {
-    {
-        "seed-priv",
-        0x0fea,
-        0,
-        0x30820fe6,
-        0x0420,
-        6,
-        0x20,
-        0x04820fc0,
-        0x2a,
-        0x0fc0,
-        0,
-        0,
-    },
-    {
-        "priv-only",
-        0x0fc4,
-        0,
-        0x04820fc0,
-        0,
-        0,
-        0,
-        0,
-        0x04,
-        0x0fc0,
-        0,
-        0,
-    },
+    { "seed-priv", 0x0fea, 0, 0x30820fe6, 0x0420, 6, 0x20, 0x04820fc0, 0x2a, 0x0fc0, 0, 0 },
+    { "priv-only", 0x0fc4, 0, 0x04820fc0, 0, 0, 0, 0, 0x04, 0x0fc0, 0, 0 },
     { "oqskeypair", 0x1764, 0, 0x04821760, 0, 0, 0, 0, 0x04, 0x0fc0, 0x0fc4, 0x07a0 },
-    {
-        "seed-only",
-        0x0022,
-        2,
-        0x8020,
-        0,
-        2,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
-    {
-        "bare-priv",
-        0x0fc0,
-        4,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x0fc0,
-        0,
-        0,
-    },
-    {
-        "bare-seed",
-        0x0020,
-        4,
-        0,
-        0,
-        0,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
+    { "seed-only", 0x0022, 2, 0x8020, 0, 2, 0x20, 0, 0, 0, 0, 0 },
+    { "bare-priv", 0x0fc0, 4, 0, 0, 0, 0, 0, 0, 0x0fc0, 0, 0 },
+    { "bare-seed", 0x0020, 4, 0, 0, 0, 0x20, 0, 0, 0, 0, 0 },
 };
 
 /*-
@@ -237,103 +65,17 @@ static const ML_COMMON_PKCS8_FMT ml_dsa_65_p8fmt[NUM_PKCS8_FORMATS] = {
  * Private key bytes: 4896 (0x1320)
  */
 static const ML_COMMON_SPKI_FMT ml_dsa_87_spkifmt = {
-    {
-        0x30,
-        0x82,
-        0x0a,
-        0x32,
-        0x30,
-        0x0b,
-        0x06,
-        0x09,
-        0x60,
-        0x86,
-        0x48,
-        0x01,
-        0x65,
-        0x03,
-        0x04,
-        0x03,
-        0x13,
-        0x03,
-        0x82,
-        0x0a,
-        0x21,
-        0x00,
-    }
+    { 0x30, 0x82, 0x0a, 0x32, 0x30, 0x0b, 0x06, 0x09, 0x60, 0x86,
+        0x48, 0x01, 0x65, 0x03, 0x04, 0x03, 0x13, 0x03, 0x82, 0x0a,
+        0x21, 0x00 }
 };
 static const ML_COMMON_PKCS8_FMT ml_dsa_87_p8fmt[NUM_PKCS8_FORMATS] = {
-    {
-        "seed-priv",
-        0x134a,
-        0,
-        0x30821346,
-        0x0420,
-        6,
-        0x20,
-        0x04821320,
-        0x2a,
-        0x1320,
-        0,
-        0,
-    },
-    {
-        "priv-only",
-        0x1324,
-        0,
-        0x04821320,
-        0,
-        0,
-        0,
-        0,
-        0x04,
-        0x1320,
-        0,
-        0,
-    },
+    { "seed-priv", 0x134a, 0, 0x30821346, 0x0420, 6, 0x20, 0x04821320, 0x2a, 0x1320, 0, 0 },
+    { "priv-only", 0x1324, 0, 0x04821320, 0, 0, 0, 0, 0x04, 0x1320, 0, 0 },
     { "oqskeypair", 0x1d44, 0, 0x04821d40, 0, 0, 0, 0, 0x04, 0x1320, 0x1324, 0x0a20 },
-    {
-        "seed-only",
-        0x0022,
-        2,
-        0x8020,
-        0,
-        2,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
-    {
-        "bare-priv",
-        0x1320,
-        4,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x1320,
-        0,
-        0,
-    },
-    {
-        "bare-seed",
-        0x0020,
-        4,
-        0,
-        0,
-        0,
-        0x20,
-        0,
-        0,
-        0,
-        0,
-        0,
-    },
+    { "seed-only", 0x0022, 2, 0x8020, 0, 2, 0x20, 0, 0, 0, 0, 0 },
+    { "bare-priv", 0x1320, 4, 0, 0, 0, 0, 0, 0, 0x1320, 0, 0 },
+    { "bare-seed", 0x0020, 4, 0, 0, 0, 0x20, 0, 0, 0, 0, 0 },
 };
 
 /* Indices of slots in the codec table below */
@@ -544,14 +286,13 @@ int ossl_ml_dsa_i2d_pubkey(const ML_DSA_KEY *key, unsigned char **out)
 
 /* Allocate and encode PKCS#8 private key payload. */
 int ossl_ml_dsa_i2d_prvkey(const ML_DSA_KEY *key, uint8_t **out,
-    PROV_CTX *provctx)
+    PROV_CTX *provctx, const char *formats)
 {
     const ML_DSA_PARAMS *params = ossl_ml_dsa_key_params(key);
     const ML_COMMON_CODEC *codec;
     ML_COMMON_PKCS8_FMT_PREF *fmt_slots, *slot;
     const ML_COMMON_PKCS8_FMT *p8fmt;
     uint8_t *buf = NULL, *pos;
-    const char *formats;
     int len = ML_DSA_SEED_BYTES;
     int ret = 0;
     const uint8_t *seed = ossl_ml_dsa_key_get_seed(key);
@@ -568,8 +309,13 @@ int ossl_ml_dsa_i2d_prvkey(const ML_DSA_KEY *key, uint8_t **out,
         return 0;
     }
 
-    formats = ossl_prov_ctx_get_param(
-        provctx, OSSL_PKEY_PARAM_ML_DSA_OUTPUT_FORMATS, NULL);
+    if (formats == NULL) {
+        if ((ossl_ml_dsa_key_get_prov_flags(key) & ML_DSA_KEY_RETAIN_SEED) == 0)
+            seed = NULL;
+        formats = ossl_prov_ctx_get_param(provctx,
+            OSSL_PKEY_PARAM_ML_DSA_OUTPUT_FORMATS,
+            NULL);
+    }
     fmt_slots = ossl_ml_common_pkcs8_fmt_order(params->alg, codec->p8fmt,
         "output", formats);
     if (fmt_slots == NULL)
@@ -589,7 +335,7 @@ int ossl_ml_dsa_i2d_prvkey(const ML_DSA_KEY *key, uint8_t **out,
             params->alg);
         goto end;
     }
-    len = p8fmt->p8_bytes;
+    len = (int)p8fmt->p8_bytes;
 
     if (out == NULL) {
         ret = len;

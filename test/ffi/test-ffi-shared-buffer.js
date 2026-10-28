@@ -1,4 +1,4 @@
-// Flags: --experimental-ffi --expose-internals
+// Flags: --expose-internals
 'use strict';
 const common = require('../common');
 common.skipIfFFIMissing();
@@ -18,6 +18,7 @@ if (endianness() === 'BE') {
 const { internalBinding } = require('internal/test/binding');
 const ffiBinding = internalBinding('ffi');
 const {
+  kFastArguments,
   kSbInvokeSlow,
   kSbArguments,
   kSbReturn,
@@ -73,7 +74,7 @@ test('f32/f64 round-trip', () => {
   }
 });
 
-test('i64/u64 BigInt round-trip', () => {
+test('i64/u64 Number and BigInt round-trip', () => {
   const { lib, functions } = ffi.dlopen(libraryPath, {
     add_i64: { return: 'i64', arguments: ['i64', 'i64'] },
     add_u64: { return: 'u64', arguments: ['u64', 'u64'] },
@@ -81,6 +82,10 @@ test('i64/u64 BigInt round-trip', () => {
   try {
     assert.strictEqual(functions.add_i64(10n, 20n), 30n);
     assert.strictEqual(functions.add_u64(10n, 20n), 30n);
+    assert.strictEqual(functions.add_i64(10, 20), 30n);
+    assert.strictEqual(functions.add_u64(10, 20), 30n);
+    assert.strictEqual(functions.add_i64(-10, 20n), 10n);
+    assert.strictEqual(functions.add_u64(10n, 20), 30n);
   } finally {
     lib.close();
   }
@@ -135,14 +140,16 @@ test('pointer args: fast path (BigInt/null) and slow-path fallback (Buffer/Array
   }
 });
 
-test('string pointer uses slow-path fallback', () => {
+test('string pointer uses shared-buffer pointer conversion', () => {
   const { lib, functions } = ffi.dlopen(libraryPath, {
     string_length: { return: 'u64', arguments: ['pointer'] },
+    safe_strlen: { return: 'i32', arguments: ['string'] },
   });
   try {
     assert.strictEqual(functions.string_length('hello'), 5n);
-    // strlen(NULL) is UB, so use a NUL-terminated Buffer for the fast path.
     assert.strictEqual(functions.string_length(Buffer.from('world\0')), 5n);
+    assert.strictEqual(functions.safe_strlen('hello'), 5);
+    assert.strictEqual(functions.safe_strlen(null), -1);
   } finally {
     lib.close();
   }
@@ -297,7 +304,7 @@ test('integer boundaries for i8/u8/i16/u16/i32/u32', () => {
   }
 });
 
-test('i64/u64 BigInt boundaries and Number/BigInt type mismatches', () => {
+test('i64/u64 Number and BigInt boundaries', () => {
   const { lib, functions } = ffi.dlopen(libraryPath, {
     add_i64: { return: 'i64', arguments: ['i64', 'i64'] },
     add_u64: { return: 'u64', arguments: ['u64', 'u64'] },
@@ -312,6 +319,9 @@ test('i64/u64 BigInt boundaries and Number/BigInt type mismatches', () => {
     assert.strictEqual(functions.add_i64(I64_MIN, 0n), I64_MIN);
     assert.strictEqual(functions.add_u64(U64_MAX, 0n), U64_MAX);
     assert.strictEqual(functions.add_u64(0n, 0n), 0n);
+    assert.strictEqual(functions.add_i64(Number.MAX_SAFE_INTEGER, 0), BigInt(Number.MAX_SAFE_INTEGER));
+    assert.strictEqual(functions.add_i64(Number.MIN_SAFE_INTEGER, 0), BigInt(Number.MIN_SAFE_INTEGER));
+    assert.strictEqual(functions.add_u64(Number.MAX_SAFE_INTEGER, 0), BigInt(Number.MAX_SAFE_INTEGER));
 
     const expect = { code: 'ERR_INVALID_ARG_VALUE' };
     assert.throws(() => functions.add_i64(I64_MAX + 1n, 0n), expect);
@@ -319,8 +329,90 @@ test('i64/u64 BigInt boundaries and Number/BigInt type mismatches', () => {
     assert.throws(() => functions.add_u64(U64_MAX + 1n, 0n), expect);
     assert.throws(() => functions.add_u64(-1n, 0n), expect);
 
-    assert.throws(() => functions.add_i64(1, 2n), expect);
+    assert.throws(() => functions.add_i64(Number.MAX_SAFE_INTEGER + 1, 0), expect);
+    assert.throws(() => functions.add_i64(Number.MIN_SAFE_INTEGER - 1, 0), expect);
+    assert.throws(() => functions.add_i64(1.5, 0), expect);
+    assert.throws(() => functions.add_i64(Number.NaN, 0), expect);
+    assert.throws(() => functions.add_i64(Number.POSITIVE_INFINITY, 0), expect);
+    assert.throws(() => functions.add_u64(-1, 0), expect);
+    assert.throws(() => functions.add_u64(Number.MAX_SAFE_INTEGER + 1, 0), expect);
+    assert.throws(() => functions.add_u64(1.5, 0), expect);
+    assert.throws(() => functions.add_u64(Number.NaN, 0), expect);
+    assert.throws(() => functions.add_u64(Number.POSITIVE_INFINITY, 0), expect);
     assert.throws(() => functions.add_i64(1n, '2'), expect);
+  } finally {
+    lib.close();
+  }
+});
+
+test('SB wrapper accepts safe Number values for i64/u64', () => {
+  const { lib, functions } = ffi.dlopen(libraryPath, {
+    identity_i64_fallback: { return: 'i64', arguments: ['pointer', 'i64', 'function'] },
+    identity_u64_fallback: { return: 'u64', arguments: ['pointer', 'u64', 'function'] },
+  });
+
+  try {
+    // A function argument excludes Fast API; BigInt and null pointers use SB.
+    for (const value of [0, -0, 42, Number.MAX_SAFE_INTEGER, 0n, 42n]) {
+      assert.strictEqual(functions.identity_i64_fallback(0n, value, null), BigInt(value));
+      assert.strictEqual(functions.identity_u64_fallback(0n, value, null), BigInt(value));
+    }
+    for (const value of [-42, Number.MIN_SAFE_INTEGER, -(2n ** 63n), (2n ** 63n) - 1n]) {
+      assert.strictEqual(functions.identity_i64_fallback(0n, value, null), BigInt(value));
+    }
+    assert.strictEqual(functions.identity_u64_fallback(0n, (2n ** 64n) - 1n, null),
+                       (2n ** 64n) - 1n);
+
+    const signedError = { code: 'ERR_INVALID_ARG_VALUE' };
+    const unsignedError = { code: 'ERR_INVALID_ARG_VALUE' };
+    for (const value of [Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1,
+                         1.5, NaN, Infinity, -Infinity, '1', null, undefined, true, {}]) {
+      assert.throws(() => functions.identity_i64_fallback(0n, value, null), signedError);
+      assert.throws(() => functions.identity_u64_fallback(0n, value, null), unsignedError);
+    }
+    for (const value of [-(2n ** 63n) - 1n, 2n ** 63n]) {
+      assert.throws(() => functions.identity_i64_fallback(0n, value, null), signedError);
+    }
+    for (const value of [-1, -1n, 2n ** 64n]) {
+      assert.throws(() => functions.identity_u64_fallback(0n, value, null), unsignedError);
+    }
+  } finally {
+    lib.close();
+  }
+});
+
+test('generic conversion accepts safe Number values for i64/u64', () => {
+  const { lib, functions } = ffi.dlopen(libraryPath, {
+    identity_i64_fallback: { return: 'i64', arguments: ['pointer', 'i64', 'function'] },
+    identity_u64_fallback: { return: 'u64', arguments: ['pointer', 'u64', 'function'] },
+  });
+  const buffer = Buffer.alloc(1);
+
+  try {
+    // A Buffer pointer selects generic conversion before validating i64/u64.
+    for (const value of [0, -0, 42, Number.MAX_SAFE_INTEGER, 0n, 42n]) {
+      assert.strictEqual(functions.identity_i64_fallback(buffer, value, null), BigInt(value));
+      assert.strictEqual(functions.identity_u64_fallback(buffer, value, null), BigInt(value));
+    }
+    for (const value of [-42, Number.MIN_SAFE_INTEGER, -(2n ** 63n), (2n ** 63n) - 1n]) {
+      assert.strictEqual(functions.identity_i64_fallback(buffer, value, null), BigInt(value));
+    }
+    assert.strictEqual(functions.identity_u64_fallback(buffer, (2n ** 64n) - 1n, null),
+                       (2n ** 64n) - 1n);
+
+    const signedError = { code: 'ERR_INVALID_ARG_VALUE' };
+    const unsignedError = { code: 'ERR_INVALID_ARG_VALUE' };
+    for (const value of [Number.MAX_SAFE_INTEGER + 1, Number.MIN_SAFE_INTEGER - 1,
+                         1.5, NaN, Infinity, -Infinity, '1', null, undefined, true, {}]) {
+      assert.throws(() => functions.identity_i64_fallback(buffer, value, null), signedError);
+      assert.throws(() => functions.identity_u64_fallback(buffer, value, null), unsignedError);
+    }
+    for (const value of [-(2n ** 63n) - 1n, 2n ** 63n]) {
+      assert.throws(() => functions.identity_i64_fallback(buffer, value, null), signedError);
+    }
+    for (const value of [-1, -1n, 2n ** 64n]) {
+      assert.throws(() => functions.identity_u64_fallback(buffer, value, null), unsignedError);
+    }
   } finally {
     lib.close();
   }
@@ -361,6 +453,7 @@ test('SB metadata is Symbol-keyed, attribute-hardened, and not leaked onto the w
       rawLib, 'add_i32', { return: 'i32', arguments: ['i32', 'i32'] });
 
     for (const [name, sym] of [
+      ['kFastArguments', kFastArguments],
       ['kSbSharedBuffer', kSbSharedBuffer],
       ['kSbInvokeSlow', kSbInvokeSlow],
       ['kSbArguments', kSbArguments],
@@ -369,35 +462,57 @@ test('SB metadata is Symbol-keyed, attribute-hardened, and not leaked onto the w
       assert.strictEqual(typeof sym, 'symbol', `${name} must be a Symbol`);
     }
 
-    // Numeric-only signature: kSbInvokeSlow absent; the rest present and hardened.
-    for (const [name, sym] of [
-      ['kSbSharedBuffer', kSbSharedBuffer],
-      ['kSbArguments', kSbArguments],
-      ['kSbReturn', kSbReturn],
-    ]) {
-      const desc = Object.getOwnPropertyDescriptor(rawFn, sym);
-      assert.ok(desc !== undefined, `${name} missing on pure-numeric SB function`);
-      assert.strictEqual(desc.enumerable, false);
-      assert.strictEqual(desc.configurable, false);
-      assert.strictEqual(desc.writable, false);
-    }
-    assert.strictEqual(
-      Object.getOwnPropertyDescriptor(rawFn, kSbInvokeSlow), undefined);
+    const rawSbDesc = Object.getOwnPropertyDescriptor(rawFn, kSbSharedBuffer);
+    const rawFnUsesFastFFI = rawSbDesc === undefined;
 
-    // Pointer signature: kSbInvokeSlow must exist (and be hardened).
-    const rawPtrFn = rawGetFunctionUnpatched.call(
-      rawLib, 'identity_pointer', { return: 'pointer', arguments: ['pointer'] });
-    const slowDesc = Object.getOwnPropertyDescriptor(rawPtrFn, kSbInvokeSlow);
-    assert.ok(slowDesc !== undefined);
-    assert.strictEqual(slowDesc.enumerable, false);
-    assert.strictEqual(slowDesc.configurable, false);
-    assert.strictEqual(slowDesc.writable, false);
+    if (rawFnUsesFastFFI) {
+      // Fast-API-eligible signatures bypass the SB wrapper and therefore do not
+      // carry SB metadata.
+      for (const [name, sym] of [
+        ['kSbSharedBuffer', kSbSharedBuffer],
+        ['kSbArguments', kSbArguments],
+        ['kSbReturn', kSbReturn],
+        ['kSbInvokeSlow', kSbInvokeSlow],
+      ]) {
+        const desc = Object.getOwnPropertyDescriptor(rawFn, sym);
+        assert.strictEqual(desc, undefined, `${name} present on Fast API function`);
+      }
+    }
+
+    if (rawFnUsesFastFFI) {
+      // Fast string signatures carry parameter metadata so the JS wrapper can
+      // perform string-to-pointer conversion, but still do not carry SB state.
+      const rawStringFn = rawGetFunctionUnpatched.call(
+        rawLib, 'safe_strlen', { return: 'u64', arguments: ['string'] });
+      const paramsDesc = Object.getOwnPropertyDescriptor(rawStringFn, kFastArguments);
+      assert.ok(paramsDesc !== undefined, 'kFastArguments missing on Fast string function');
+      assert.strictEqual(paramsDesc.enumerable, false);
+      assert.strictEqual(paramsDesc.configurable, false);
+      assert.strictEqual(paramsDesc.writable, false);
+      assert.strictEqual(
+        Object.getOwnPropertyDescriptor(rawStringFn, kSbArguments), undefined);
+      assert.strictEqual(
+        Object.getOwnPropertyDescriptor(rawStringFn, kSbSharedBuffer), undefined);
+      assert.strictEqual(
+        Object.getOwnPropertyDescriptor(rawStringFn, kSbReturn), undefined);
+      assert.strictEqual(
+        Object.getOwnPropertyDescriptor(rawStringFn, kSbInvokeSlow), undefined);
+    }
 
     assert.deepStrictEqual(Object.keys(rawFn), ['pointer']);
     const ownSyms = Object.getOwnPropertySymbols(rawFn);
-    assert.ok(ownSyms.includes(kSbSharedBuffer));
-    assert.ok(ownSyms.includes(kSbArguments));
-    assert.ok(ownSyms.includes(kSbReturn));
+    if (rawFnUsesFastFFI) {
+      assert.ok(!ownSyms.includes(kSbSharedBuffer));
+      assert.ok(!ownSyms.includes(kSbArguments));
+      assert.ok(!ownSyms.includes(kSbReturn));
+    } else {
+      assert.ok(ownSyms.includes(kSbSharedBuffer));
+      assert.ok(ownSyms.includes(kSbArguments));
+      assert.ok(ownSyms.includes(kSbReturn));
+      assert.strictEqual(rawSbDesc.enumerable, false);
+      assert.strictEqual(rawSbDesc.configurable, false);
+      assert.strictEqual(rawSbDesc.writable, false);
+    }
 
     // Internals must not be forwarded by `inheritMetadata`.
     const { lib, functions } = ffi.dlopen(libraryPath, {

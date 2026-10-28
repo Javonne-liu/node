@@ -5,9 +5,10 @@ const common = require('../common');
 if (!common.hasCrypto)
   common.skip('missing crypto');
 
-const { hasOpenSSL } = require('../common/crypto');
+const { isBoringSSL } = require('../common/crypto');
 
 const assert = require('assert');
+const { getFips } = require('crypto');
 const { subtle } = globalThis.crypto;
 
 async function testEncrypt({ keyBuffer, algorithm, plaintext, result }) {
@@ -229,7 +230,7 @@ async function testDecrypt({ keyBuffer, algorithm, result }) {
 }
 
 // Test aes-ocb vectors
-if (hasOpenSSL(3)) {
+if (!isBoringSSL) {
   const {
     passing,
     failing,
@@ -237,6 +238,13 @@ if (hasOpenSSL(3)) {
   } = require('../fixtures/crypto/aes_ocb')();
 
   (async function() {
+    if (getFips() === 1) {
+      await assert.rejects(
+        testEncrypt(passing[0]),
+        { name: 'NotSupportedError', message: 'Unrecognized algorithm name' });
+      return;
+    }
+
     const variations = [];
 
     passing.forEach((vector) => {

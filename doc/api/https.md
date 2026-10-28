@@ -100,6 +100,10 @@ changes:
 
     See [`Session Resumption`][] for information about TLS session reuse.
 
+Requests that specify a custom `checkServerIdentity` option are not eligible
+for connection reuse or TLS session reuse by an `https.Agent`, unless the
+`checkServerIdentity` option was specified when constructing the Agent.
+
 #### Event: `'keylog'`
 
 <!-- YAML
@@ -195,7 +199,7 @@ This method is identical to [`server.listen()`][] from [`net.Server`][].
 
 ### `server.maxHeadersCount`
 
-* Type: {number} **Default:** `2000`
+* Type: {number} **Default:** `1000`
 
 See [`server.maxHeadersCount`][] in the `node:http` module.
 
@@ -423,6 +427,10 @@ a `timeout` of 5 seconds.
 <!-- YAML
 added: v0.3.6
 changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/64777
+    description: Using the `clientCertEngine` option now throws
+                 `ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED`.
   - version:
     - v22.4.0
     - v20.16.0
@@ -464,10 +472,9 @@ changes:
 Makes a request to a secure web server.
 
 The following additional `options` from [`tls.connect()`][] are also accepted:
-`ca`, `cert`, `ciphers`, `clientCertEngine` (deprecated), `crl`, `dhparam`, `ecdhCurve`,
-`honorCipherOrder`, `key`, `passphrase`, `pfx`, `rejectUnauthorized`,
-`secureOptions`, `secureProtocol`, `servername`, `sessionIdContext`,
-`highWaterMark`.
+`ca`, `cert`, `ciphers`, `crl`, `dhparam`, `ecdhCurve`, `honorCipherOrder`,
+`key`, `passphrase`, `pfx`, `rejectUnauthorized`, `secureOptions`,
+`secureProtocol`, `servername`, `sessionIdContext`, `highWaterMark`.
 
 `options` can be an object, a string, or a [`URL`][] object. If `options` is a
 string, it is automatically parsed with [`new URL()`][]. If it is a [`URL`][]

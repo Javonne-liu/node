@@ -1,4 +1,4 @@
-// Flags: --experimental-vfs
+// Flags: --disable-warning=ExperimentalWarning
 'use strict';
 
 // Exercise VirtualFileHandle / MemoryFileHandle methods directly via
@@ -42,10 +42,17 @@ myVfs.writeFileSync('/file.txt', 'hello world');
   assert.strictEqual(b1.toString(), 'hello');
   assert.strictEqual(b2.toString(), ' world');
 
+  // Metadata methods reach the entry the way fchmod(2)/futimes(2) do, and
+  // validate their arguments the way a FileHandle would.
+  await handle.chmod(0o600);
+  assert.strictEqual((await handle.stat()).mode & 0o777, 0o600);
+  await handle.utimes(1000, 2000);
+  assert.strictEqual((await handle.stat()).mtimeMs, 2000 * 1000);
+  await assert.rejects(handle.chmod(), { code: 'ERR_INVALID_ARG_TYPE' });
+  await assert.rejects(handle.utimes(), { code: 'ERR_INVALID_ARG_TYPE' });
+
   // no-op metadata methods
-  await handle.chmod();
   await handle.chown();
-  await handle.utimes();
   await handle.datasync();
   await handle.sync();
 
@@ -81,6 +88,12 @@ myVfs.writeFileSync('/file.txt', 'hello world');
   const buf = Buffer.from('abc');
   myVfs.writeSync(fd, buf, 0, 3, 0);
   myVfs.closeSync(fd);
+
+  const fd3 = myVfs.openSync('/sync-current.txt', 'w');
+  myVfs.writeSync(fd3, Buffer.from('abc'), 0, 3, -1);
+  myVfs.writeSync(fd3, Buffer.from('def'), 0, 3, -1);
+  myVfs.closeSync(fd3);
+  assert.strictEqual(myVfs.readFileSync('/sync-current.txt', 'utf8'), 'abcdef');
 
   const fd2 = myVfs.openSync('/sync.txt', 'r');
   const out = Buffer.alloc(3);

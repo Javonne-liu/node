@@ -10,7 +10,6 @@
 #include <openssl/crypto.h>
 #include "internal/cryptlib.h"
 #include "internal/rcu.h"
-#include "crypto/cryptlib.h"
 #include "rcu_internal.h"
 
 #if !defined(OPENSSL_THREADS) || defined(CRYPTO_TDEBUG)
@@ -38,9 +37,9 @@ void ossl_rcu_lock_free(CRYPTO_RCU_LOCK *lock)
     OPENSSL_free(lock);
 }
 
-void ossl_rcu_read_lock(CRYPTO_RCU_LOCK *lock)
+int ossl_rcu_read_lock(CRYPTO_RCU_LOCK *lock)
 {
-    return;
+    return 1;
 }
 
 void ossl_rcu_write_lock(CRYPTO_RCU_LOCK *lock)
@@ -73,18 +72,23 @@ void ossl_synchronize_rcu(CRYPTO_RCU_LOCK *lock)
     }
 }
 
-int ossl_rcu_call(CRYPTO_RCU_LOCK *lock, rcu_cb_fn cb, void *data)
+CRYPTO_RCU_CB_ITEM *ossl_rcu_cb_item_new(void)
 {
-    struct rcu_cb_item *new = OPENSSL_zalloc(sizeof(*new));
+    return OPENSSL_zalloc(sizeof(CRYPTO_RCU_CB_ITEM));
+}
 
-    if (new == NULL)
-        return 0;
+void ossl_rcu_cb_item_free(CRYPTO_RCU_CB_ITEM *item)
+{
+    OPENSSL_free(item);
+}
 
-    new->fn = cb;
-    new->data = data;
-    new->next = lock->cb_items;
-    lock->cb_items = new;
-    return 1;
+void ossl_rcu_call(CRYPTO_RCU_LOCK *lock, CRYPTO_RCU_CB_ITEM *item,
+    rcu_cb_fn cb, void *data)
+{
+    item->fn = cb;
+    item->data = data;
+    item->next = lock->cb_items;
+    lock->cb_items = item;
 }
 
 void *ossl_rcu_uptr_deref(void **p)
@@ -166,11 +170,6 @@ int CRYPTO_THREAD_init_local(CRYPTO_THREAD_LOCAL *key, void (*cleanup)(void *))
 {
     int entry_idx = 0;
 
-#ifndef FIPS_MODULE
-    if (!ossl_init_thread())
-        return 0;
-#endif
-
     for (entry_idx = 0; entry_idx < OPENSSL_CRYPTO_THREAD_LOCAL_KEY_MAX; entry_idx++) {
         if (!thread_local_storage[entry_idx].used)
             break;
@@ -217,7 +216,7 @@ int CRYPTO_THREAD_cleanup_local(CRYPTO_THREAD_LOCAL *key)
 
 CRYPTO_THREAD_ID CRYPTO_THREAD_get_current_id(void)
 {
-    return 1;
+    return 0;
 }
 
 int CRYPTO_THREAD_compare_id(CRYPTO_THREAD_ID a, CRYPTO_THREAD_ID b)
@@ -279,6 +278,41 @@ int CRYPTO_atomic_load_int(int *val, int *ret, CRYPTO_RWLOCK *lock)
     *ret = *val;
 
     return 1;
+}
+
+int CRYPTO_atomic_store_int(int *dst, int val, CRYPTO_RWLOCK *lock)
+{
+    *dst = val;
+
+    return 1;
+}
+
+int CRYPTO_atomic_load_ptr(void **ptr, void **ret, CRYPTO_RWLOCK *lock)
+{
+    *ret = *ptr;
+    return 1;
+}
+
+int CRYPTO_atomic_store_ptr(void **dst, void **val, CRYPTO_RWLOCK *lock)
+{
+    *dst = *val;
+    return 1;
+}
+
+int CRYPTO_atomic_cmp_exch_ptr(void **ptr, void **expect, void *desire, CRYPTO_RWLOCK *lock, int *lock_failed)
+{
+    int lock_sink;
+
+    if (lock_failed == NULL)
+        lock_failed = &lock_sink;
+
+    *lock_failed = 0;
+    if (*ptr == *expect) {
+        *ptr = desire;
+        return 1;
+    }
+    *expect = *ptr;
+    return 0;
 }
 
 int openssl_init_fork_handlers(void)

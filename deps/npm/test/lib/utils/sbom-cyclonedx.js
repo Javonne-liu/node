@@ -83,6 +83,19 @@ t.test('single node - package lock only', t => {
   t.end()
 })
 
+t.test('single node - uses package name for root component name', t => {
+  const node = {
+    ...root,
+    name: '',
+    packageName: '@scope/root-package',
+    pkgid: '@scope/root-package@1.0.0',
+  }
+  const res = cyclonedxOutput({ npm, nodes: [node] })
+  t.equal(res.metadata.component.name, '@scope/root-package')
+  t.equal(res.metadata.component['bom-ref'], '@scope/root-package@1.0.0')
+  t.end()
+})
+
 t.test('single node - optional ', t => {
   const node = { ...root, optional: true }
   const res = cyclonedxOutput({ npm, nodes: [node] })
@@ -254,6 +267,17 @@ t.test('single node - from git url', t => {
   const node = { ...root, type: 'git', resolved: 'https://github.com/foo/bar#1234' }
   const res = cyclonedxOutput({ npm, nodes: [node] })
   t.matchSnapshot(JSON.stringify(res))
+  t.end()
+})
+
+t.test('git url with special chars is encoded into the vcs_url qualifier', t => {
+  const node = { ...root, type: 'git', resolved: 'https://github.com/foo/bar.git?a=b&c=d#1234' }
+  const res = cyclonedxOutput({ npm, nodes: [node] })
+  const { purl } = res.metadata.component
+  // everything after vcs_url= must be a single percent-encoded value, so the
+  // committish/query can't leak out as an extra purl qualifier or subpath
+  t.equal(purl, 'pkg:npm/root@1.0.0?vcs_url=https%3A%2F%2Fgithub.com%2Ffoo%2Fbar.git%3Fa%3Db%26c%3Dd%231234')
+  t.notMatch(purl.split('vcs_url=')[1], /[#&]/)
   t.end()
 })
 

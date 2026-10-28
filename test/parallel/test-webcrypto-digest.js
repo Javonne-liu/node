@@ -9,21 +9,22 @@ const assert = require('assert');
 const { Buffer } = require('buffer');
 const { subtle } = globalThis.crypto;
 const { createHash, getHashes } = require('crypto');
+const { isBoringSSL } = require('../common/crypto');
 
 const kTests = [
   ['SHA-1', ['sha1'], 160],
   ['SHA-256', ['sha256'], 256],
   ['SHA-384', ['sha384'], 384],
   ['SHA-512', ['sha512'], 512],
+  ['SHA3-256', ['sha3-256'], 256],
+  ['SHA3-384', ['sha3-384'], 384],
+  ['SHA3-512', ['sha3-512'], 512],
 ];
 
-if (!process.features.openssl_is_boringssl) {
+if (!isBoringSSL) {
   kTests.push(
     [{ name: 'cSHAKE128', outputLength: 256 }, ['shake128', { outputLength: 256 >> 3 }], 256],
     [{ name: 'cSHAKE256', outputLength: 512 }, ['shake256', { outputLength: 512 >> 3 }], 512],
-    ['SHA3-256', ['sha3-256'], 256],
-    ['SHA3-384', ['sha3-384'], 384],
-    ['SHA3-512', ['sha3-512'], 512],
   );
 } else {
   common.printSkipMessage('Skipping unsupported test cases');
@@ -148,7 +149,7 @@ const kDigestedData = {
           '60b22aab8d36a4c2a3affdb71234f49276737c575ddf7' +
           '4d14054cbd6fdb98fd0ddcbcb46f91ad76b6ee'
   },
-  ...(!process.features.openssl_is_boringssl ? {
+  ...(!isBoringSSL ? {
     'cshake128': {
       empty: '7f9c2ba4e88f827d616045507605853ed73b8093f6e' +
             'fbc88eb1a6eacfa66ef26',
@@ -174,41 +175,41 @@ const kDigestedData = {
             'd5290933492f9d17411926a613dd0611668c2ac999e8' +
             'c011aabaa9004323425fbad75b0f58ee6e777a94'
     },
-    'sha3-256': {
-      empty: 'a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a',
-      short: '3059af7aa33b517084e8ad7bbc4fb208a44c28ef32b4698d103dd540e4f91aa1',
-      medium: '1fa7cd1da74cd8046417508c8314e74a9a4a9d38f9f18e6cb215b8c891a0a80e',
-      long: 'b2cfc61e0386cdaef5e10a2be189891f5ef52a7624bfcd8edc893acc64fec600'
-    },
-    'sha3-384': {
-      empty: '0c63a75b845e4f7d01107d852e4c2485c51a50aaaa9' +
-            '4fc61995e71bbee983a2ac3713831264adb47fb6bd1' +
-            'e058d5f004',
-      short: '54b8f0e4cf4974de740098f66b3024479b01631315a' +
-            '6773606c33eadc32556a6e778e08f0225ae79265aec' +
-            '666cb2390b',
-      medium: '437b7d8b68b250b5c1739ea4cc86db2033879dfb18' +
-              'de292c9c50d9c193a4c79a08a6cae3f4e483c2795e' +
-              'a5d1ef7e69d2',
-      long: '3b39c4c97ad87613305d0ccc987181713e2d5e84b1f9' +
-            '760011bcce0c297499005bdce8a3d2409b5ad0164f32' +
-            'bb8778d0'
-    },
-    'sha3-512': {
-      empty: 'a69f73cca23a9ac5c8b567dc185a756e97c982164fe' +
-            '25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9' +
-            '402c3ac558f500199d95b6d3e301758586281dcd26',
-      short: '2dd2e07a62e6ad0498ba84f313c4d4024cb46001f78' +
-            'f75db336b0d4d8bd2a9ec152c4ad20878735d82ba08' +
-            '72ecf59608ef3ced2b2a8669427e7da31e362333d8',
-      medium: 'e640a21909536640369e9b0a48931c5cb2efcbc91f' +
-            'ecf247306bc96a0e4ca33307cb8e1b9af367946dd01' +
-            'c243f3907508d04f1692a3161df1f898de8ee25febe',
-      long: 'bd262cecf565c338032de5ba0138f0aacfe7dde83d27' +
-            '2d0d37d952829ed25de1a1342d98659ef7d2fa4aca7c' +
-            'e2b1aa0784d8fc1dcbf81bcec7a7431a3da36bf7'
-    }
   } : {}),
+  'sha3-256': {
+    empty: 'a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a',
+    short: '3059af7aa33b517084e8ad7bbc4fb208a44c28ef32b4698d103dd540e4f91aa1',
+    medium: '1fa7cd1da74cd8046417508c8314e74a9a4a9d38f9f18e6cb215b8c891a0a80e',
+    long: 'b2cfc61e0386cdaef5e10a2be189891f5ef52a7624bfcd8edc893acc64fec600'
+  },
+  'sha3-384': {
+    empty: '0c63a75b845e4f7d01107d852e4c2485c51a50aaaa9' +
+          '4fc61995e71bbee983a2ac3713831264adb47fb6bd1' +
+          'e058d5f004',
+    short: '54b8f0e4cf4974de740098f66b3024479b01631315a' +
+          '6773606c33eadc32556a6e778e08f0225ae79265aec' +
+          '666cb2390b',
+    medium: '437b7d8b68b250b5c1739ea4cc86db2033879dfb18' +
+            'de292c9c50d9c193a4c79a08a6cae3f4e483c2795e' +
+            'a5d1ef7e69d2',
+    long: '3b39c4c97ad87613305d0ccc987181713e2d5e84b1f9' +
+          '760011bcce0c297499005bdce8a3d2409b5ad0164f32' +
+          'bb8778d0'
+  },
+  'sha3-512': {
+    empty: 'a69f73cca23a9ac5c8b567dc185a756e97c982164fe' +
+          '25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9' +
+          '402c3ac558f500199d95b6d3e301758586281dcd26',
+    short: '2dd2e07a62e6ad0498ba84f313c4d4024cb46001f78' +
+          'f75db336b0d4d8bd2a9ec152c4ad20878735d82ba08' +
+          '72ecf59608ef3ced2b2a8669427e7da31e362333d8',
+    medium: 'e640a21909536640369e9b0a48931c5cb2efcbc91f' +
+          'ecf247306bc96a0e4ca33307cb8e1b9af367946dd01' +
+          'c243f3907508d04f1692a3161df1f898de8ee25febe',
+    long: 'bd262cecf565c338032de5ba0138f0aacfe7dde83d27' +
+          '2d0d37d952829ed25de1a1342d98659ef7d2fa4aca7c' +
+          'e2b1aa0784d8fc1dcbf81bcec7a7431a3da36bf7'
+  }
 };
 
 async function testDigest(size, alg) {
@@ -263,9 +264,189 @@ if (getHashes().includes('shake128')) {
       new Uint8Array(0),
     );
 
-    await assert.rejects(subtle.digest({ name: 'cSHAKE128', outputLength: 7 }, Buffer.alloc(1)), {
-      name: 'NotSupportedError',
-      message: 'Unsupported CShakeParams outputLength',
-    });
+    await assert.rejects(
+      subtle.digest({ name: 'cSHAKE128', outputLength: 7 }, Buffer.alloc(1)),
+      { name: 'NotSupportedError', message: 'Invalid CShakeParams outputLength' });
+
+    await assert.rejects(
+      subtle.digest(
+        { name: 'cSHAKE128', outputLength: 0xffffffff },
+        Buffer.alloc(1)),
+      {
+        name: 'NotSupportedError',
+        message: 'Invalid CShakeParams outputLength',
+      });
+
+    await assert.rejects(
+      subtle.digest(
+        {
+          name: 'cSHAKE128',
+          outputLength: 256,
+          functionName: Buffer.from('SHAKE'),
+        },
+        Buffer.alloc(1)),
+      {
+        name: 'NotSupportedError',
+        message: 'Unsupported CShakeParams functionName',
+      });
+
+    for (const name of ['cSHAKE128', 'cSHAKE256']) {
+      const supported = getHashes().includes(name.toLowerCase());
+      assert.deepStrictEqual(
+        await subtle.digest({
+          name,
+          outputLength: 256,
+          functionName: Buffer.alloc(0),
+          customization: Buffer.alloc(0),
+        }, Buffer.alloc(1)),
+        await subtle.digest({ name, outputLength: 256 }, Buffer.alloc(1)));
+
+      await assert.rejects(
+        subtle.digest({
+          name,
+          outputLength: 256,
+          customization: Buffer.alloc(513, 1),
+        }, Buffer.alloc(1)),
+        supported ? {
+          name: 'OperationError',
+          message: 'CShakeParams.customization must be at most 512 bytes',
+        } : {
+          name: 'NotSupportedError',
+          message: 'Unsupported CShakeParams customization',
+        });
+
+      await assert.rejects(
+        subtle.digest({
+          name,
+          outputLength: 256,
+          customization: Buffer.from([0x61, 0x00, 0x62]),
+        }, Buffer.alloc(1)),
+        { name: 'NotSupportedError', message: 'Unsupported CShakeParams customization' });
+
+      for (const params of [
+        { functionName: Buffer.from('KMAC') },
+        { customization: Buffer.from('Node.js') },
+      ]) {
+        const algorithm = { name, outputLength: 256, ...params };
+        if (supported) {
+          assert.strictEqual((await subtle.digest(algorithm, Buffer.alloc(1))).byteLength, 32);
+        } else {
+          await assert.rejects(subtle.digest(algorithm, Buffer.alloc(1)), {
+            name: 'NotSupportedError',
+          });
+        }
+      }
+    }
+
+    const nistCShakeShortInput = Buffer.from('00010203', 'hex');
+    const nistCShakeLongInput =
+      Buffer.from(Array.from({ length: 200 }, (_, i) => i));
+    const nistCShakeSample1 = {
+      algorithm: {
+        name: 'cSHAKE128',
+        outputLength: 256,
+        customization: Buffer.from('Email Signature'),
+      },
+      data: nistCShakeShortInput,
+      expected: 'c1c36925b6409a04f1b504fcbca9d82b' +
+                '4017277cb5ed2b2065fc1d3814d5aaf5',
+    };
+
+    for (const { algorithm, data, expected } of [
+      nistCShakeSample1,
+      {
+        algorithm: {
+          name: 'cSHAKE128',
+          outputLength: 256,
+          customization: Buffer.from('Email Signature'),
+        },
+        data: nistCShakeLongInput,
+        expected: 'c5221d50e4f822d96a2e8881a961420f' +
+                  '294b7b24fe3d2094baed2c6524cc166b',
+      },
+      {
+        algorithm: {
+          name: 'cSHAKE256',
+          outputLength: 512,
+          customization: Buffer.from('Email Signature'),
+        },
+        data: nistCShakeShortInput,
+        expected: 'd008828e2b80ac9d2218ffee1d070c48' +
+                  'b8e4c87bff32c9699d5b6896eee0edd1' +
+                  '64020e2be0560858d9c00c037e34a96' +
+                  '937c561a74c412bb4c746469527281c8c',
+      },
+      {
+        algorithm: {
+          name: 'cSHAKE256',
+          outputLength: 512,
+          customization: Buffer.from('Email Signature'),
+        },
+        data: nistCShakeLongInput,
+        expected: '07dc27b11e51fbac75bc7b3c1d983e8b' +
+                  '4b85fb1defaf218912ac864302730917' +
+                  '27f42b17ed1df63e8ec118f04b23633c' +
+                  '1dfb1574c8fb55cb45da8e25afb092bb',
+      },
+      {
+        algorithm: {
+          name: 'cSHAKE128',
+          outputLength: 312,
+          functionName: Buffer.from('KMAC'),
+          customization: Buffer.from(
+            '`kiEF`&I))7]yq0?*sKa q)[jP`4R=)lV_9tyvT$kAbH$)1}p].' +
+            'bbeomb.'),
+        },
+        data: Buffer.from('ca88f708fa', 'hex'),
+        expected: 'bebb534ccfccd300f731d2911fb4351d' +
+                  '5fcc95ac2509e9abae8f9dc51106e28d' +
+                  '7f25ae11738334',
+      },
+      {
+        algorithm: {
+          name: 'cSHAKE256',
+          outputLength: 264,
+          functionName: Buffer.from('TupleHash'),
+          customization: Buffer.from(
+            'q8gN}O&V*VDU4Y.^5J13tG2,1^Lw~C2rw $AB3.SX)=@z'),
+        },
+        data: Buffer.from('13d101da', 'hex'),
+        expected: '43163a57fc1ee8f1c501a2add927698c' +
+                  'a5a4b52c0d3ef3fd6d91d8d2386765e0ae',
+      },
+      {
+        algorithm: {
+          name: 'cSHAKE256',
+          outputLength: 312,
+          functionName: Buffer.from('ParallelHash'),
+          customization: Buffer.from(
+            'vD-1>T,f.R*V%ZA<NtW0$3UZD[$X%QVQE,H6E;xqYQI4co^F#Sf:' +
+            'CU!dmQkbPRbZ{V1x3,v3{fTPiBvT}[UOk</o*dGrN7@(nm7,^d4v]' +
+            'R>[ OyJ'),
+        },
+        data: Buffer.from('d5d7e7517f', 'hex'),
+        expected: '442be69b2afd7c8282839920a8446aaf' +
+                  '16a5049d3d018eac87e04cf9225870ef' +
+                  'ca6f88db415829',
+      },
+    ]) {
+      if (getHashes().includes(algorithm.name.toLowerCase())) {
+        assert.strictEqual(
+          Buffer.from(await subtle.digest(algorithm, data)).toString('hex'),
+          expected);
+      } else {
+        await assert.rejects(subtle.digest(algorithm, data), {
+          name: 'NotSupportedError',
+        });
+      }
+    }
+
+    if (getHashes().includes('cshake128')) {
+      await assert.rejects(
+        subtle.digest(
+          { ...nistCShakeSample1.algorithm, outputLength: 255 },
+          nistCShakeSample1.data),
+        { name: 'NotSupportedError', message: 'Invalid CShakeParams outputLength' });
+    }
   })().then(common.mustCall());
 }

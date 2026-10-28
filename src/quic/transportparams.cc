@@ -1,4 +1,3 @@
-#if HAVE_OPENSSL && HAVE_QUIC
 #include "guard.h"
 #ifndef OPENSSL_NO_QUIC
 #include <async_wrap-inl.h>
@@ -486,7 +485,7 @@ v8::MaybeLocal<v8::Object> TransportParams::ToObject(Environment* env) const {
   }
 
   auto obj = tmpl->NewInstance(env->context(), values);
-  if (obj->SetPrototypeV2(env->context(), Null(env->isolate())).IsNothing()) {
+  if (obj->SetPrototype(env->context(), Null(env->isolate())).IsNothing()) {
     return {};
   }
   return obj;
@@ -506,6 +505,16 @@ TransportParams::operator bool() const {
   return ptr_ != nullptr;
 }
 
+uint64_t TransportParams::initial_max_streams_bidi() const {
+  DCHECK_NOT_NULL(ptr_);
+  return ptr_->initial_max_streams_bidi;
+}
+
+uint64_t TransportParams::initial_max_streams_uni() const {
+  DCHECK_NOT_NULL(ptr_);
+  return ptr_->initial_max_streams_uni;
+}
+
 void TransportParams::Initialize(Environment* env, Local<Object> target) {
   NODE_DEFINE_CONSTANT(target, DEFAULT_MAX_STREAM_DATA);
   NODE_DEFINE_CONSTANT(target, DEFAULT_MAX_DATA);
@@ -519,4 +528,3 @@ void TransportParams::Initialize(Environment* env, Local<Object> target) {
 }  // namespace node
 
 #endif  // OPENSSL_NO_QUIC
-#endif  // HAVE_OPENSSL && HAVE_QUIC

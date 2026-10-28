@@ -4,19 +4,21 @@ const common = require('../common');
 if (!common.hasCrypto)
   common.skip('missing crypto');
 
-if (process.features.openssl_is_boringssl)
+const {
+  isBoringSSL,
+  hasFIPS,
+  testSignVerify,
+  spkiExp,
+  sec1EncExp,
+} = require('../common/crypto');
+
+if (isBoringSSL)
   common.skip('BoringSSL does not support paramEncoding: explicit');
 
 const assert = require('assert');
 const {
   generateKeyPair,
 } = require('crypto');
-const {
-  testSignVerify,
-  spkiExp,
-  sec1EncExp,
-  hasOpenSSL3,
-} = require('../common/crypto');
 
 {
   // Test async explicit elliptic curve key generation with an encrypted
@@ -34,7 +36,12 @@ const {
       cipher: 'aes-128-cbc',
       passphrase: 'secret'
     }
-  }, common.mustSucceed((publicKey, privateKey) => {
+  }, common.mustCall((err, publicKey, privateKey) => {
+    if (hasFIPS(3)) {
+      assert.strictEqual(err?.code, 'ERR_OSSL_EVP_UNSUPPORTED');
+      return;
+    }
+    assert.ifError(err);
     assert.strictEqual(typeof publicKey, 'string');
     assert.match(publicKey, spkiExp);
     assert.strictEqual(typeof privateKey, 'string');
@@ -42,13 +49,9 @@ const {
 
     // Since the private key is encrypted, signing shouldn't work anymore.
     assert.throws(() => testSignVerify(publicKey, privateKey),
-                  hasOpenSSL3 ? {
+                  {
                     message: 'error:07880109:common libcrypto ' +
                              'routines::interrupted or cancelled'
-                  } : {
-                    name: 'TypeError',
-                    code: 'ERR_MISSING_PASSPHRASE',
-                    message: 'Passphrase required for encrypted key'
                   });
 
     testSignVerify(publicKey, { key: privateKey, passphrase: 'secret' });

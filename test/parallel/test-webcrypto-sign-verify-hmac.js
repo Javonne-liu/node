@@ -6,6 +6,8 @@ if (!common.hasCrypto)
   common.skip('missing crypto');
 
 const assert = require('assert');
+const { getFips } = require('crypto');
+const { isBoringSSL } = require('../common/crypto');
 const { subtle } = globalThis.crypto;
 
 const vectors = require('../fixtures/crypto/hmac')();
@@ -35,7 +37,7 @@ async function testVerify({ hash,
     subtle.generateKey(
       {
         name: 'RSA-PSS',
-        modulusLength: 1024,
+        modulusLength: getFips() === 1 ? 2048 : 1024,
         publicExponent: new Uint8Array([1, 0, 1]),
         hash: 'SHA-256',
       },
@@ -126,7 +128,7 @@ async function testSign({ hash,
     subtle.generateKey(
       {
         name: 'RSA-PSS',
-        modulusLength: 1024,
+        modulusLength: getFips() === 1 ? 2048 : 1024,
         publicExponent: new Uint8Array([1, 0, 1]),
         hash: 'SHA-256',
       },
@@ -173,6 +175,10 @@ async function testSign({ hash,
   const variations = [];
 
   for (const vector of vectors) {
+    // The shared fixtures also cover node:crypto; WebCrypto only supports
+    // SHA-3 for digest operations in BoringSSL.
+    if (isBoringSSL && vector.hash.startsWith('SHA3-'))
+      continue;
     variations.push(testVerify(vector));
     variations.push(testSign(vector));
   }

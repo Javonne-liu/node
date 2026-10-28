@@ -6,15 +6,15 @@ if (!common.hasCrypto)
 const assert = require('assert');
 const crypto = require('crypto');
 const fixtures = require('../common/fixtures');
-const { hasOpenSSL } = require('../common/crypto');
+const {
+  hasOpenSSL,
+  hasFIPS,
+  isBoringSSL: commonIsBoringSSL,
+} = require('../common/crypto');
 const { promisify } = require('util');
 
-const isBoringSSL = process.features.openssl_is_boringssl;
-
-if (!hasOpenSSL(3) && !isBoringSSL) {
-  assert.throws(() => crypto.encapsulate(), { code: 'ERR_CRYPTO_KEM_NOT_SUPPORTED' });
-  return;
-}
+const isBoringSSL = commonIsBoringSSL;
+const isFips = hasFIPS(3);
 
 assert.throws(() => crypto.encapsulate(), { code: 'ERR_INVALID_ARG_TYPE',
                                             message: /The "key" argument must be of type/ });
@@ -23,7 +23,7 @@ assert.throws(() => crypto.decapsulate(), { code: 'ERR_INVALID_ARG_TYPE',
 
 const keys = {
   'rsa': {
-    supported: hasOpenSSL(3), // RSASVE was added in 3.0
+    supported: !isBoringSSL, // BoringSSL does not support RSASVE
     publicKey: fixtures.readKey('rsa_public_2048.pem', 'ascii'),
     privateKey: fixtures.readKey('rsa_private_2048.pem', 'ascii'),
     sharedSecretLength: 256,
@@ -36,7 +36,7 @@ const keys = {
     privateKey: fixtures.readKey('rsa_pss_private_2048.pem', 'ascii'),
   },
   'p-256': {
-    supported: hasOpenSSL(3, 2), // DHKEM was added in 3.2
+    supported: hasOpenSSL(3, 2) && !isFips, // DHKEM was added in 3.2
     publicKey: fixtures.readKey('ec_p256_public.pem', 'ascii'),
     privateKey: fixtures.readKey('ec_p256_private.pem', 'ascii'),
     sharedSecretLength: 32,
@@ -44,7 +44,7 @@ const keys = {
     raw: true,
   },
   'p-384': {
-    supported: hasOpenSSL(3, 2), // DHKEM was added in 3.2
+    supported: hasOpenSSL(3, 2) && !isFips, // DHKEM was added in 3.2
     publicKey: fixtures.readKey('ec_p384_public.pem', 'ascii'),
     privateKey: fixtures.readKey('ec_p384_private.pem', 'ascii'),
     sharedSecretLength: 48,
@@ -52,7 +52,7 @@ const keys = {
     raw: true,
   },
   'p-521': {
-    supported: hasOpenSSL(3, 2), // DHKEM was added in 3.2
+    supported: hasOpenSSL(3, 2) && !isFips, // DHKEM was added in 3.2
     publicKey: fixtures.readKey('ec_p521_public.pem', 'ascii'),
     privateKey: fixtures.readKey('ec_p521_private.pem', 'ascii'),
     sharedSecretLength: 64,
@@ -65,7 +65,7 @@ const keys = {
     privateKey: fixtures.readKey('ec_secp256k1_private.pem', 'ascii'),
   },
   'x25519': {
-    supported: hasOpenSSL(3, 2), // DHKEM was added in 3.2
+    supported: hasOpenSSL(3, 2) && !isFips, // DHKEM was added in 3.2
     publicKey: fixtures.readKey('x25519_public.pem', 'ascii'),
     privateKey: fixtures.readKey('x25519_private.pem', 'ascii'),
     sharedSecretLength: 32,
@@ -73,7 +73,7 @@ const keys = {
     raw: true,
   },
   'x448': {
-    supported: hasOpenSSL(3, 2), // DHKEM was added in 3.2
+    supported: hasOpenSSL(3, 2) && !isFips, // DHKEM was added in 3.2
     publicKey: fixtures.readKey('x448_public.pem', 'ascii'),
     privateKey: fixtures.readKey('x448_private.pem', 'ascii'),
     sharedSecretLength: 64,

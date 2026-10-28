@@ -47,14 +47,21 @@ WebCryptoCipherStatus AES_Cipher(Environment* env,
                                  ByteSource* out) {
   CHECK_EQ(key_data.GetKeyType(), kKeyTypeSecret);
 
+  const bool encrypt = cipher_mode == kWebCryptoCipherEncrypt;
+  // AES-KW requires at least two 64-bit plaintext blocks, plus the
+  // 64-bit integrity check value when unwrapping.
+  if (params.cipher.isWrapMode() && in.size() < (encrypt ? 16u : 24u)) {
+    return WebCryptoCipherStatus::FAILED;
+  }
+
   auto ctx = CipherCtxPointer::New();
-  CHECK(ctx);
+  if (!ctx) {
+    return WebCryptoCipherStatus::FAILED;
+  }
 
   if (params.cipher.isWrapMode()) {
     ctx.setAllowWrap();
   }
-
-  const bool encrypt = cipher_mode == kWebCryptoCipherEncrypt;
 
   if (!ctx.init(params.cipher, encrypt)) {
     // Cipher init failed
@@ -118,7 +125,17 @@ WebCryptoCipherStatus AES_Cipher(Environment* env,
   }
 
   size_t total = 0;
-  int buf_len = data_len + ctx.getBlockSize() + (encrypt ? tag_len : 0);
+  const int block_size = ctx.getBlockSize();
+  if (block_size < 0) {
+    return WebCryptoCipherStatus::FAILED;
+  }
+  int buf_len;
+  if (!TryGetIntCipherOutputLength(
+          data_len,
+          static_cast<size_t>(block_size) + (encrypt ? tag_len : 0),
+          &buf_len)) {
+    return WebCryptoCipherStatus::FAILED;
+  }
   int out_len;
 
   ncrypto::Buffer<const unsigned char> buffer = {
@@ -133,11 +150,8 @@ WebCryptoCipherStatus AES_Cipher(Environment* env,
   auto buf = DataPointer::Alloc(buf_len);
   auto ptr = static_cast<unsigned char*>(buf.get());
 
-  // In some outdated version of OpenSSL (e.g.
-  // ubi81_sharedlibs_openssl111fips_x64) may be used in sharedlib mode, the
-  // logic will be failed when input size is zero. The newer OpenSSL has fixed
-  // it up. But we still have to regard zero as special in Node.js code to
-  // prevent old OpenSSL failure.
+  // Some shared OpenSSL builds fail when the input size is zero. Keep handling
+  // zero-length input in Node.js to avoid relying on backend-specific behavior.
   //
   // Refs:
   // https://github.com/openssl/openssl/commit/420cb707b880e4fb649094241371701013eeb15f
@@ -154,7 +168,7 @@ WebCryptoCipherStatus AES_Cipher(Environment* env,
 
   total += out_len;
   CHECK_LE(out_len, buf_len);
-  out_len = ctx.getBlockSize();
+  out_len = block_size;
   if (!ctx.update({}, ptr + total, &out_len, true)) {
     return WebCryptoCipherStatus::FAILED;
   }
@@ -247,7 +261,7 @@ WebCryptoCipherStatus AES_KW_Cipher(Environment* env,
 // implementation here:
 // https://github.com/chromium/chromium/blob/7af6cfd/components/webcrypto/algorithms/aes_ctr.cc
 
-template <typename T>
+template <std::integral T>
 T CeilDiv(T a, T b) {
   return a == 0 ? 0 : 1 + (a - 1) / b;
 }
@@ -372,7 +386,9 @@ WebCryptoCipherStatus AES_CTR_Cipher(Environment* env,
     return status;
   }
 
-  BN_ULONG input_size_part1 = remaining_until_reset.getWord() * kAesBlockSize;
+  std::optional<BN_ULONG> remaining_blocks = remaining_until_reset.getWord();
+  CHECK(remaining_blocks.has_value());
+  BN_ULONG input_size_part1 = remaining_blocks.value() * kAesBlockSize;
 
   // Encrypt the first part...
   auto status =
@@ -477,8 +493,7 @@ void UseDefaultIV(AESCipherConfig* params) {
 }  // namespace
 
 AESCipherConfig::AESCipherConfig(AESCipherConfig&& other) noexcept
-    : mode(other.mode),
-      variant(other.variant),
+    : variant(other.variant),
       cipher(other.cipher),
       length(other.length),
       iv(std::move(other.iv)),
@@ -491,12 +506,8 @@ AESCipherConfig& AESCipherConfig::operator=(AESCipherConfig&& other) noexcept {
 }
 
 void AESCipherConfig::MemoryInfo(MemoryTracker* tracker) const {
-  // If mode is sync, then the data in each of these properties
-  // is not owned by the AESCipherConfig, so we ignore it.
-  if (IsCryptoJobAsync(mode)) {
-    tracker->TrackFieldWithSize("iv", iv.size());
-    tracker->TrackFieldWithSize("additional_data", additional_data.size());
-  }
+  tracker->TraitTrackInline(iv, "iv");
+  tracker->TraitTrackInline(additional_data, "additional_data");
 }
 
 Maybe<void> AESCipherTraits::AdditionalConfig(
@@ -506,8 +517,6 @@ Maybe<void> AESCipherTraits::AdditionalConfig(
     WebCryptoCipherMode cipher_mode,
     AESCipherConfig* params) {
   Environment* env = Environment::GetCurrent(args);
-
-  params->mode = mode;
 
   CHECK(args[offset]->IsUint32());  // Key Variant
   params->variant =
@@ -561,8 +570,13 @@ Maybe<void> AESCipherTraits::AdditionalConfig(
     UseDefaultIV(params);
   }
 
-  // For OCB mode, allow variable IV lengths (1-15 bytes)
-  if (params->cipher.isOcbMode()) {
+  if (params->cipher.isGcmMode()) {
+    if (params->iv.size() == 0) {
+      THROW_ERR_CRYPTO_INVALID_IV(env);
+      return Nothing<void>();
+    }
+  } else if (params->cipher.isOcbMode()) {
+    // For OCB mode, allow variable IV lengths (1-15 bytes).
     if (params->iv.size() == 0 || params->iv.size() > 15) {
       THROW_ERR_CRYPTO_INVALID_IV(env);
       return Nothing<void>();

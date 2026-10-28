@@ -7,8 +7,7 @@
 
 import { hasQuic, skip, mustCall } from '../common/index.mjs';
 import assert from 'node:assert';
-
-const { ok, strictEqual } = assert;
+import { dump } from 'node:stream/iter';
 
 if (!hasQuic) {
   skip('QUIC is not enabled');
@@ -74,8 +73,8 @@ const serverEndpoint = await listen(mustCall((serverSession) => {
     }
 
     // Data integrity.
-    strictEqual(receivedBytes, totalBytes);
-    strictEqual(receivedChecksum, expectedChecksum);
+    assert.strictEqual(receivedBytes, totalBytes);
+    assert.strictEqual(receivedChecksum, expectedChecksum);
 
     // Coalescing effectiveness: verify that at least some chunks are larger
     // than the ~1154-byte QUIC frame payload, showing that the accumulator
@@ -84,18 +83,18 @@ const serverEndpoint = await listen(mustCall((serverSession) => {
     // multiple packets arrive in the same event loop iteration. Under
     // real network conditions the effect is much more pronounced.
     const maxChunkSize = Math.max(...receivedChunkSizes);
-    ok(
+    assert.ok(
       maxChunkSize > 1154,
       `Expected at least one chunk larger than a single QUIC frame ` +
       `(1154 bytes), but max was ${maxChunkSize}`
     );
 
     // Stats: after full drain, bytes_accumulated should be 0.
-    strictEqual(stream.stats.bytesAccumulated, 0n);
+    assert.strictEqual(stream.stats.bytesAccumulated, 0n);
 
     // max_bytes_accumulated should be nonzero — data passed through
     // the accumulator.
-    ok(
+    assert.ok(
       stream.stats.maxBytesAccumulated > 0n,
       'maxBytesAccumulated should be nonzero'
     );
@@ -125,8 +124,7 @@ for (let i = 0; i < payloadSizes.length; i++) {
 w.endSync();
 
 // Drain the server's empty response to let the stream close cleanly.
-// eslint-disable-next-line no-unused-vars
-for await (const _ of stream) { /* drain response */ }
+await dump(stream);
 await Promise.all([stream.closed, serverDone.promise]);
 await clientSession.close();
 await serverEndpoint.close();
